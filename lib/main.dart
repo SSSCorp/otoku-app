@@ -28,15 +28,17 @@ class Vehicle {
   String get name => '$brand $model $year';
 }
 
+enum ProductFitment { confirmed, possibleUnverified, incompatible, unknown }
+
 class Product {
   final String name, category, price, icon;
-  final bool compatible;
+  final ProductFitment fitment;
   Product(
     this.name,
     this.category,
     this.price,
     this.icon, {
-    this.compatible = true,
+    this.fitment = ProductFitment.unknown,
   });
 }
 
@@ -56,17 +58,36 @@ class OtoKuState extends ChangeNotifier {
   );
   bool obdConnected = false;
   final List<Product> products = [
-    Product('Oli Mesin Honda AHM SPX2', 'Oli & Cairan', 'Rp 65.000', 'oil'),
-    Product('Kampas Rem Depan Beat', 'Rem', 'Rp 85.000', 'brake'),
-    Product('Filter Udara Honda Beat', 'Filter', 'Rp 42.000', 'filter'),
+    Product(
+      'Oli Mesin Honda AHM SPX2',
+      'Oli & Cairan',
+      'Rp 65.000',
+      'oil',
+      fitment: ProductFitment.confirmed,
+    ),
+    Product(
+      'Kampas Rem Depan Beat',
+      'Rem',
+      'Rp 85.000',
+      'brake',
+      fitment: ProductFitment.confirmed,
+    ),
+    Product(
+      'Filter Udara Honda Beat',
+      'Filter',
+      'Rp 42.000',
+      'filter',
+      fitment: ProductFitment.confirmed,
+    ),
     Product('Aki Motor YTZ5S', 'Aki', 'Rp 185.000', 'battery'),
-    Product('Lampu LED Universal', 'Lampu', 'Rp 75.000', 'lamp'),
+    Product('Lampu LED Universal', 'Aksesori', 'Rp 75.000', 'lamp'),
+    Product('Scanner OBD Bluetooth', 'Perangkat OBD', 'Rp 249.000', 'obd'),
     Product(
       'Kampas Rem Mobil Avanza',
       'Rem',
       'Rp 210.000',
       'brake',
-      compatible: false,
+      fitment: ProductFitment.incompatible,
     ),
   ];
   final workshops = [
@@ -271,7 +292,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
-  final pages = const ['Home', 'Sparepart', 'Bengkel', 'Pesanan', 'Akun'];
+  final pages = const ['Home', 'Shop', 'Peta', 'Pesanan', 'Akun'];
   @override
   Widget build(BuildContext context) {
     final body = [
@@ -296,12 +317,12 @@ class _AppShellState extends State<AppShell> {
           NavigationDestination(
             icon: Icon(Icons.grid_view_outlined),
             selectedIcon: Icon(Icons.grid_view),
-            label: 'Sparepart',
+            label: 'Shop',
           ),
           NavigationDestination(
-            icon: Icon(Icons.build_outlined),
-            selectedIcon: Icon(Icons.build),
-            label: 'Bengkel',
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: 'Peta',
           ),
           NavigationDestination(
             icon: Icon(Icons.receipt_long_outlined),
@@ -802,25 +823,6 @@ class HomeScreen extends StatelessWidget {
                   onTap: () => push(context, VehicleDetailScreen(state: state)),
                 ),
                 const SizedBox(height: 14),
-                state.obdConnected
-                    ? ConnectedObdCard(state: state)
-                    : LockedObdCard(state: state),
-                if (state.obdConnected) ...[
-                  SectionTitle(
-                    'Data Kendaraan (Real-time)',
-                    action: 'Lihat Semua',
-                    onTap: () => push(context, ObdScreen(state: state)),
-                  ),
-                  MetricGrid(
-                    onTap: () => push(context, ObdScreen(state: state)),
-                  ),
-                  SectionTitle(
-                    'Kondisi Kendaraan',
-                    action: 'Lihat Detail',
-                    onTap: () => push(context, ObdScreen(state: state)),
-                  ),
-                  HealthSummary(state: state),
-                ],
                 SectionTitle(
                   'Perawatan Berikutnya',
                   action: 'Lihat Semua',
@@ -829,6 +831,26 @@ class HomeScreen extends StatelessWidget {
                 MaintenanceCard(
                   onTap: () => push(context, MaintenanceScreen(state: state)),
                 ),
+                const SizedBox(height: 16),
+                state.obdConnected
+                    ? ConnectedObdCard(state: state)
+                    : LockedObdCard(state: state),
+                if (state.obdConnected) ...[
+                  SectionTitle(
+                    'Data OBD Demo',
+                    action: 'Lihat Semua',
+                    onTap: () => push(context, ObdScreen(state: state)),
+                  ),
+                  MetricGrid(
+                    onTap: () => push(context, ObdScreen(state: state)),
+                  ),
+                  SectionTitle(
+                    'Kondisi Kendaraan (Demo)',
+                    action: 'Lihat Detail',
+                    onTap: () => push(context, ObdScreen(state: state)),
+                  ),
+                  HealthSummary(state: state),
+                ],
               ]),
             ),
           ),
@@ -876,7 +898,7 @@ class LockedObdCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'untuk Data Kendaraan Real-time',
+                    'Mode simulasi untuk prototipe',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
@@ -885,7 +907,7 @@ class LockedObdCard extends StatelessWidget {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Pantau kondisi mesin, konsumsi BBM, dan deteksi masalah lebih awal.',
+                    'OBD asli belum diaktifkan. Data yang ditampilkan di prototipe adalah simulasi.',
                     style: TextStyle(
                       color: Colors.white70,
                       height: 1.4,
@@ -911,7 +933,7 @@ class LockedObdCard extends StatelessWidget {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Lihat OBD OtoKu'),
+                Text('Lihat demo OBD'),
                 SizedBox(width: 8),
                 Icon(Icons.chevron_right),
               ],
@@ -924,7 +946,7 @@ class LockedObdCard extends StatelessWidget {
             Expanded(
               child: ObdFeature(
                 icon: Icons.speed_outlined,
-                label: 'Data real-time',
+                label: 'Data simulasi',
               ),
             ),
             Expanded(
@@ -1026,11 +1048,11 @@ class ConnectedObdCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'OBD OtoKu Terhubung',
+                'OBD Demo Aktif',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
               Text(
-                'Terakhir diperbarui: 2 menit yang lalu',
+                'Data simulasi — bukan data kendaraan langsung',
                 style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
             ],
@@ -2303,7 +2325,7 @@ class ObdScreen extends StatelessWidget {
           const SizedBox(height: 16),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [Pill('Real-time', active: true), Pill('Diagnostik')],
+            children: [Pill('Simulasi', active: true), Pill('Diagnostik')],
           ),
           const SizedBox(height: 16),
           MetricGrid(onTap: () {}),
@@ -2414,11 +2436,23 @@ class _CatalogState extends State<CatalogScreen> {
   String query = '', cat = 'Semua';
   @override
   Widget build(BuildContext c) {
-    final cats = ['Semua', 'Oli & Cairan', 'Rem', 'Filter', 'Aki', 'Lampu'];
+    final cats = [
+      'Semua',
+      'Sparepart',
+      'Oli & Cairan',
+      'Aksesori',
+      'Perangkat OBD',
+      'Rem',
+      'Filter',
+      'Aki',
+    ];
     final list = widget.state.products
         .where(
           (p) =>
-              (cat == 'Semua' || p.category == cat) &&
+              (cat == 'Semua' ||
+                  p.category == cat ||
+                  (cat == 'Sparepart' &&
+                      !['Aksesori', 'Perangkat OBD'].contains(p.category))) &&
               (query.isEmpty ||
                   p.name.toLowerCase().contains(query.toLowerCase())),
         )
@@ -2432,7 +2466,7 @@ class _CatalogState extends State<CatalogScreen> {
               child: Row(
                 children: [
                   const Text(
-                    'Sparepart',
+                    'Shop',
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
                   ),
                   const Spacer(),
@@ -2456,7 +2490,7 @@ class _CatalogState extends State<CatalogScreen> {
                 TextField(
                   onChanged: (x) => setState(() => query = x),
                   decoration: InputDecoration(
-                    hintText: 'Cari sparepart...',
+                    hintText: 'Cari produk...',
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: Colors.white,
@@ -2553,12 +2587,12 @@ class _CatalogState extends State<CatalogScreen> {
                           .toList(),
                 ),
                 SectionTitle(
-                  'Rekomendasi untuk Honda Beat',
+                  'Produk untuk kendaraan aktif',
                   action: 'Lihat semua',
                 ),
-                Text(
-                  'Cocok dengan kendaraan aktif Anda',
-                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                const Text(
+                  'Kecocokan hanya ditandai jika sudah dikonfirmasi.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 10),
                 ...list.map(
@@ -2599,11 +2633,20 @@ class ProductCard extends StatelessWidget {
             children: [
               Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800)),
               Text(
-                p.compatible
-                    ? 'Cocok untuk Honda Beat 2021'
-                    : 'Tidak kompatibel dengan kendaraan Anda',
+                switch (p.fitment) {
+                  ProductFitment.confirmed => 'Cocok untuk Honda Beat 2021',
+                  ProductFitment.possibleUnverified =>
+                    'Kecocokan belum diverifikasi',
+                  ProductFitment.incompatible =>
+                    'Tidak cocok untuk kendaraan ini',
+                  ProductFitment.unknown => 'Kompatibilitas belum diketahui',
+                },
                 style: TextStyle(
-                  color: p.compatible ? AppColors.green : AppColors.red,
+                  color: switch (p.fitment) {
+                    ProductFitment.confirmed => AppColors.green,
+                    ProductFitment.incompatible => AppColors.red,
+                    _ => AppColors.muted,
+                  },
                   fontSize: 11,
                 ),
               ),
@@ -2957,23 +3000,33 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      if (product.compatible)
+                      if (product.fitment == ProductFitment.confirmed)
                         const StatusChip('Stok tersedia', AppColors.green),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  if (!product.compatible)
+                  if (product.fitment == ProductFitment.unknown ||
+                      product.fitment == ProductFitment.possibleUnverified)
+                    CardBox(
+                      child: Text(
+                        product.fitment == ProductFitment.possibleUnverified
+                            ? 'Kecocokan produk ini belum diverifikasi untuk kendaraan Anda.'
+                            : 'Informasi kompatibilitas belum tersedia.',
+                        style: const TextStyle(color: AppColors.muted),
+                      ),
+                    ),
+                  if (product.fitment == ProductFitment.incompatible)
                     const CardBox(
                       color: AppColors.redTint,
                       child: Text(
-                        'Tidak kompatibel dengan kendaraan Anda',
+                        'Tidak cocok untuk kendaraan Anda',
                         style: TextStyle(
                           color: AppColors.red,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
-                  if (product.compatible)
+                  if (product.fitment == ProductFitment.confirmed)
                     const Column(
                       children: [
                         FeatureRow(
@@ -3009,7 +3062,7 @@ class ProductDetailScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: product.compatible
+                      onPressed: product.fitment != ProductFitment.incompatible
                           ? () {
                               state.add(product);
                               ScaffoldMessenger.of(c).showSnackBar(
@@ -3025,7 +3078,7 @@ class ProductDetailScreen extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton(
-                      onPressed: product.compatible
+                      onPressed: product.fitment != ProductFitment.incompatible
                           ? () {
                               state.add(product);
                               push(c, CheckoutScreen(state: state));
@@ -3093,15 +3146,26 @@ class WorkshopListScreen extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         const Text(
-          'Bengkel',
+          'Peta',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 4),
-        const Text('Bekasi Utara', style: TextStyle(color: AppColors.muted)),
-        const SizedBox(height: 16),
+        const Text(
+          'Demo area Bekasi Utara • data tempat contoh',
+          style: TextStyle(color: AppColors.muted),
+        ),
+        const SizedBox(height: 12),
+        const CardBox(
+          color: Color(0xFFFFF7E6),
+          child: Text(
+            'Peta dan lokasi langsung belum terhubung. Cari berdasarkan area untuk melihat data demo.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
         TextField(
           decoration: InputDecoration(
-            hintText: 'Cari bengkel...',
+            hintText: 'Cari tempat atau area...',
             prefixIcon: const Icon(Icons.search),
             filled: true,
             fillColor: Colors.white,
@@ -3174,8 +3238,8 @@ class WorkshopCard extends StatelessWidget {
               ),
               const SizedBox(height: 5),
               const Text(
-                '✓ Terverifikasi',
-                style: TextStyle(color: AppColors.green, fontSize: 12),
+                'Bengkel demo • belum diverifikasi',
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
               Text(
                 w.services,
@@ -3208,7 +3272,7 @@ class WorkshopDetailScreen extends StatelessWidget {
           onPressed: () =>
               push(c, BookingScreen(state: state, workshop: workshop)),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          child: const Text('Booking Sekarang'),
+          child: const Text('Booking demo'),
         ),
       ),
     ),
@@ -3243,8 +3307,8 @@ class WorkshopDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           const Text(
-            '✓ Terverifikasi  ·  Buka 08:00–21:00',
-            style: TextStyle(color: AppColors.green),
+            'Bengkel demo • jam operasional belum diverifikasi',
+            style: TextStyle(color: AppColors.muted),
           ),
           const SizedBox(height: 12),
           const Row(
