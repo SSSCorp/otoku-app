@@ -118,7 +118,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('SPBU Pertamina Demo'), findsOneWidget);
       expect(find.text('Bengkel Jaya Motor'), findsNothing);
-      expect(find.textContaining('OpenStreetMap'), findsOneWidget);
+      expect(find.textContaining('Peta ilustrasi'), findsOneWidget);
     },
   );
 
@@ -228,11 +228,7 @@ void main() {
   ) async {
     await launchToHome(tester);
 
-    await tester.drag(
-      find.byType(CustomScrollView).first,
-      const Offset(0, -260),
-    );
-    await tester.pumpAndSettle();
+    await reveal(tester, find.text('Lihat demo OBD'));
     await tester.tap(find.text('Lihat demo OBD'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Lihat simulasi OBD'));

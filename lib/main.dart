@@ -1278,11 +1278,63 @@ class HomeScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                GestureDetector(
+                  onTap: () => push(context, CatalogScreen(state: state)),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLow,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.search, color: AppColors.muted, size: 20),
+                        SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            'Cari sparepart, bengkel, atau layanan...',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.tune, color: AppColors.muted, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 HomeVehicleCard(
                   state: state,
                   onTap: () => push(context, VehicleDetailScreen(state: state)),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HomeQuickAction(
+                        icon: Icons.add_circle_outline,
+                        label: 'Catat aktivitas',
+                        onTap: () =>
+                            push(context, ManualLogScreen(state: state)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _HomeQuickAction(
+                        icon: Icons.storefront_outlined,
+                        label: 'Cari bengkel',
+                        onTap: () =>
+                            push(context, WorkshopListScreen(state: state)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
                 SectionTitle(
                   'Perawatan Berikutnya',
                   action: 'Lihat Semua',
@@ -1334,6 +1386,53 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HomeQuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _HomeQuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.red, size: 19),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 3),
+            const Icon(Icons.chevron_right, color: AppColors.muted, size: 16),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class LockedObdCard extends StatefulWidget {
@@ -3409,13 +3508,49 @@ class _CatalogState extends State<CatalogScreen> {
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: Row(
                 children: [
-                  const Text(
-                    'Shop',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -.5,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: 'OtoKu',
+                              style: TextStyle(
+                                color: AppColors.red,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            TextSpan(
+                              text: '  ·  Shop',
+                              style: TextStyle(
+                                color: AppColors.ink,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        style: TextStyle(fontSize: 21, letterSpacing: -.4),
+                      ),
+                      const SizedBox(height: 1),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            size: 13,
+                            color: AppColors.red,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            widget.state.vehicle.name,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   const Spacer(),
                   if (widget.state.cart.isNotEmpty)
@@ -3452,75 +3587,145 @@ class _CatalogState extends State<CatalogScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                const SizedBox(height: 18),
-                const Text(
-                  'Kategori',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children:
+                        [
+                              'Semua',
+                              'Sparepart',
+                              'Oli & Cairan',
+                              'Rem',
+                              'Filter',
+                              'Aki',
+                              'Aksesori',
+                            ]
+                            .map(
+                              (value) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(value),
+                                  selected: cat == value,
+                                  showCheckmark: false,
+                                  onSelected: (_) =>
+                                      setState(() => cat = value),
+                                  backgroundColor: AppColors.surfaceLow,
+                                  selectedColor: AppColors.red,
+                                  labelStyle: TextStyle(
+                                    color: cat == value
+                                        ? Colors.white
+                                        : AppColors.muted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                  side: BorderSide.none,
+                                  shape: const StadiumBorder(),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                  ),
                 ),
-                const SizedBox(height: 10),
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 4,
-                  childAspectRatio: .82,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  children:
-                      [
-                            ['Sparepart', Icons.two_wheeler],
-                            ['Oli & Cairan', Icons.oil_barrel_outlined],
-                            ['Rem', Icons.disc_full],
-                            ['Filter', Icons.filter_alt_outlined],
-                            ['Aki', Icons.battery_full],
-                            ['Aksesori', Icons.lightbulb_outline],
-                            ['Semua', Icons.grid_view_outlined],
-                          ]
-                          .map(
-                            (x) => InkWell(
-                              onTap: () => setState(() => cat = x[0] as String),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Column(
-                                children: [
-                                  Container(
-                                    width: 52,
-                                    height: 52,
-                                    decoration: BoxDecoration(
-                                      color: cat == x[0]
-                                          ? AppColors.redTint
-                                          : Colors.white,
-                                      border: Border.all(
-                                        color: cat == x[0]
-                                            ? AppColors.red
-                                            : AppColors.border,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      x[1] as IconData,
-                                      color: cat == x[0]
-                                          ? AppColors.red
-                                          : AppColors.ink,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    x[0] as String,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: cat == x[0]
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: cat == x[0]
-                                          ? AppColors.red
-                                          : AppColors.muted,
-                                    ),
-                                  ),
-                                ],
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.navy, AppColors.darkSurface],
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x1F151C27),
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.red,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'FITUR OtoKu',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: .5,
+                                ),
                               ),
                             ),
-                          )
-                          .toList(),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Pantau mesin lebih mudah',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Jelajahi perangkat OBD dan contoh fitur diagnostik.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed: () => showObdSheet(c, widget.state),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.zero,
+                              ),
+                              icon: const Text(
+                                'Lihat demo',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              label: const Icon(
+                                Icons.arrow_forward,
+                                size: 15,
+                                color: Color(0xFFFF7378),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .1),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.memory,
+                          color: Colors.white70,
+                          size: 28,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 SectionTitle(
                   'Produk (${list.length})',
@@ -3574,6 +3779,16 @@ class _CatalogState extends State<CatalogScreen> {
                       child: ProductCard(
                         p: p,
                         vehicleName: widget.state.vehicle.name,
+                        onAdd: () {
+                          widget.state.add(p);
+                          ScaffoldMessenger.of(c).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${p.name} ditambahkan ke keranjang',
+                              ),
+                            ),
+                          );
+                        },
                         onTap: () => push(
                           c,
                           ProductDetailScreen(state: widget.state, product: p),
@@ -3594,18 +3809,21 @@ class ProductCard extends StatelessWidget {
   final Product p;
   final String vehicleName;
   final VoidCallback onTap;
+  final VoidCallback onAdd;
   const ProductCard({
     super.key,
     required this.p,
     required this.vehicleName,
     required this.onTap,
+    required this.onAdd,
   });
   @override
   Widget build(BuildContext c) => CardBox(
     onTap: onTap,
+    padding: const EdgeInsets.all(10),
     child: Row(
       children: [
-        ProductArt(icon: p.icon, image: p.imageAsset),
+        ProductArt(icon: p.icon, image: p.imageAsset, size: 80),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -3630,7 +3848,7 @@ class ProductCard extends StatelessWidget {
                   fontSize: 11,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Text(
                 p.price,
                 style: const TextStyle(
@@ -3645,7 +3863,20 @@ class ProductCard extends StatelessWidget {
             ],
           ),
         ),
-        const Icon(Icons.chevron_right),
+        const SizedBox(width: 8),
+        IconButton.filled(
+          tooltip: 'Tambah ${p.name} ke keranjang',
+          onPressed: onAdd,
+          style: IconButton.styleFrom(
+            backgroundColor: AppColors.red,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(40, 40),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(11),
+            ),
+          ),
+          icon: const Icon(Icons.add_shopping_cart, size: 18),
+        ),
       ],
     ),
   );
@@ -3654,13 +3885,14 @@ class ProductCard extends StatelessWidget {
 class ProductArt extends StatelessWidget {
   final String icon;
   final String? image;
-  const ProductArt({super.key, required this.icon, this.image});
+  final double size;
+  const ProductArt({super.key, required this.icon, this.image, this.size = 68});
   @override
   Widget build(BuildContext c) => Container(
-    width: 68,
-    height: 68,
+    width: size,
+    height: size,
     decoration: BoxDecoration(
-      color: const Color(0xFFF2F1ED),
+      color: AppColors.surfaceLow,
       borderRadius: BorderRadius.circular(14),
     ),
     child: image == null || image!.isEmpty
@@ -4099,75 +4331,172 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
 
   @override
   Widget build(BuildContext c) => SafeArea(
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'Peta & Tempat',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Bekasi Utara · data lokasi ilustrasi',
-          style: TextStyle(color: AppColors.muted),
-        ),
-        const SizedBox(height: 12),
-        const DemoMapPreview(),
-        const SizedBox(height: 10),
-        TextField(
-          onChanged: (value) => setState(() => query = value),
-          decoration: InputDecoration(
-            hintText: 'Cari bengkel, SPBU, minimarket...',
-            prefixIcon: const Icon(Icons.search),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderSide: BorderSide.none,
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children:
-              [
-                    'Semua',
-                    'Bengkel partner',
-                    'Bengkel non-partner',
-                    'Minimarket',
-                    'SPBU',
-                  ]
-                  .map(
-                    (value) => ChoiceChip(
-                      label: Text(value),
-                      selected: category == value,
-                      onSelected: (_) => setState(() => category = value),
+    child: CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+          sliver: SliverToBoxAdapter(
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Peta & Tempat',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -.3,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Bekasi Utara · lokasi demo',
+                        style: TextStyle(fontSize: 11, color: AppColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                CircleIconButton(
+                  icon: Icons.my_location,
+                  onTap: () => ScaffoldMessenger.of(c).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Lokasi saat ini tidak tersedia di mode demo',
+                      ),
                     ),
-                  )
-                  .toList(),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          '${filtered.length} tempat',
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        if (filtered.isEmpty)
-          const CardBox(
-            child: Text('Tempat tidak ditemukan. Coba filter lain.'),
-          ),
-        ...filtered.map(
-          (place) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: WorkshopCard(
-              w: place,
-              onTap: () => push(
-                c,
-                WorkshopDetailScreen(state: widget.state, workshop: place),
-              ),
+                  ),
+                ),
+              ],
             ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          sliver: SliverToBoxAdapter(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const DemoMapPreview(),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  top: 12,
+                  child: Material(
+                    elevation: 3,
+                    shadowColor: AppColors.ink.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(14),
+                    child: TextField(
+                      onChanged: (value) => setState(() => query = value),
+                      decoration: InputDecoration(
+                        hintText: 'Cari bengkel, SPBU, minimarket...',
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: AppColors.muted,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: BorderSide.none,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 56,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              scrollDirection: Axis.horizontal,
+              children:
+                  [
+                        'Semua',
+                        'Bengkel partner',
+                        'Bengkel non-partner',
+                        'Minimarket',
+                        'SPBU',
+                      ]
+                      .map(
+                        (value) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(value),
+                            selected: category == value,
+                            showCheckmark: false,
+                            onSelected: (_) => setState(() => category = value),
+                            backgroundColor: Colors.white,
+                            selectedColor: AppColors.redTint,
+                            labelStyle: TextStyle(
+                              color: category == value
+                                  ? AppColors.red
+                                  : AppColors.muted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                            ),
+                            side: BorderSide(
+                              color: category == value
+                                  ? AppColors.red.withValues(alpha: .25)
+                                  : AppColors.border,
+                            ),
+                            shape: const StadiumBorder(),
+                          ),
+                        ),
+                      )
+                      .toList(),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+          sliver: SliverList.list(
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '${filtered.length} tempat',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'Area Bekasi & Sekitarnya',
+                    style: TextStyle(fontSize: 11, color: AppColors.muted),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (filtered.isEmpty)
+                const CardBox(
+                  child: Text('Tempat tidak ditemukan. Coba filter lain.'),
+                ),
+              ...filtered.map(
+                (place) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: WorkshopCard(
+                    w: place,
+                    onTap: () => push(
+                      c,
+                      WorkshopDetailScreen(
+                        state: widget.state,
+                        workshop: place,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -4179,12 +4508,19 @@ class DemoMapPreview extends StatelessWidget {
   const DemoMapPreview({super.key});
   @override
   Widget build(BuildContext context) => Container(
-    height: 156,
+    height: 230,
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
-      color: const Color(0xFFE7EBDD),
-      borderRadius: BorderRadius.circular(18),
+      color: const Color(0xFFE7EEE4),
+      borderRadius: BorderRadius.circular(22),
       border: Border.all(color: AppColors.border),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x10151C27),
+          blurRadius: 12,
+          offset: Offset(0, 4),
+        ),
+      ],
     ),
     child: Stack(
       children: [
@@ -4205,17 +4541,39 @@ class DemoMapPreview extends StatelessWidget {
           child: Icon(Icons.location_on, color: AppColors.ink, size: 26),
         ),
         Positioned(
+          right: 12,
+          bottom: 38,
+          child: Material(
+            color: Colors.white,
+            elevation: 2,
+            shape: const CircleBorder(),
+            child: IconButton(
+              tooltip: 'Pusatkan peta',
+              onPressed: () {},
+              icon: const Icon(
+                Icons.my_location,
+                color: AppColors.ink,
+                size: 19,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
           left: 10,
           bottom: 10,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Colors.white.withValues(alpha: .94),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              'Pratinjau OpenStreetMap · data demo',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+              'Peta ilustrasi · lokasi demo',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
             ),
           ),
         ),
@@ -4725,20 +5083,55 @@ class _OrdersScreenState extends State<OrdersScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
           children: [
-            const Text(
-              'Pesanan Saya',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -.5,
-              ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'OtoKu',
+                          style: TextStyle(
+                            color: AppColors.red,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '  ·  Pesanan',
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    style: TextStyle(fontSize: 21, letterSpacing: -.4),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Bantuan pesanan',
+                  onPressed: () => showPrototypeNotice(
+                    context,
+                    'Bantuan',
+                    'Pesanan lokal demo. Status pembayaran dan pengiriman belum tersedia.',
+                  ),
+                  icon: const Icon(Icons.help_outline, color: AppColors.muted),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              '${orders.length} pesanan',
-              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Text(
+                  '${orders.length} aktivitas',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+                const Spacer(),
+                if (orders.isNotEmpty)
+                  const Icon(Icons.circle, color: AppColors.red, size: 7),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             SegmentedButton<String>(
               segments: const [
                 ButtonSegment(value: 'Semua', label: Text('Semua')),
@@ -4831,67 +5224,128 @@ class OrderCard extends StatelessWidget {
         : '';
     final date = fields.length > 1 ? fields.last : '';
     return CardBox(
+      padding: const EdgeInsets.all(14),
       onTap: onTap,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
         children: [
-          ProductArt(icon: order.contains('Oli') ? 'oil' : 'brake'),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            children: [
+              Icon(
+                order.startsWith('#SV')
+                    ? Icons.build_circle_outlined
+                    : Icons.inventory_2_outlined,
+                size: 17,
+                color: AppColors.muted,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  fields.first,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .1,
+                  ),
+                ),
+              ),
+              StatusChip(
+                normalizedStatus,
+                normalizedStatus == 'Diproses' ||
+                        normalizedStatus == 'Dikirim' ||
+                        normalizedStatus.startsWith('Menunggu')
+                    ? AppColors.amber
+                    : normalizedStatus == 'Dibatalkan'
+                    ? AppColors.muted
+                    : AppColors.green,
+              ),
+              const SizedBox(width: 2),
+              const Icon(Icons.chevron_right, size: 18, color: AppColors.muted),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ProductArt(
+                icon: order.contains('Oli') ? 'oil' : 'brake',
+                size: 58,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        fields.first,
+                    Text(
+                      fields.length > 1 ? fields[1] : order,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (details.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        details,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppColors.muted,
-                          fontSize: 12,
+                          fontSize: 11,
                         ),
                       ),
-                    ),
-                    StatusChip(
-                      normalizedStatus,
-                      normalizedStatus == 'Diproses' ||
-                              normalizedStatus == 'Dikirim' ||
-                              normalizedStatus.startsWith('Menunggu')
-                          ? AppColors.amber
-                          : normalizedStatus == 'Dibatalkan'
-                          ? AppColors.muted
-                          : AppColors.green,
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.chevron_right,
-                      size: 18,
-                      color: AppColors.muted,
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      date,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  fields.length > 1 ? fields[1] : order,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                  ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLow,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 15,
+                  color: AppColors.muted,
                 ),
-                if (details.isNotEmpty)
-                  Text(
-                    details,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    order.startsWith('#SV')
+                        ? 'Permintaan demo · menunggu respons bengkel'
+                        : 'Transaksi simulasi · belum ada pembayaran',
                     style: const TextStyle(
                       color: AppColors.muted,
-                      fontSize: 12,
+                      fontSize: 10,
                     ),
                   ),
-                const SizedBox(height: 8),
-                Text(
-                  date,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+                const Text(
+                  'Detail',
+                  style: TextStyle(
+                    color: AppColors.red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -5018,72 +5472,188 @@ class AccountScreen extends StatelessWidget {
         ),
       ),
     ];
+    Widget menuGroup(
+      List<({String title, IconData icon, VoidCallback onTap})> items,
+    ) => DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+        boxShadow: _cardShadow,
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            ListTile(
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              leading: Icon(items[i].icon, color: AppColors.muted, size: 22),
+              title: Text(
+                items[i].title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: AppColors.muted,
+                size: 20,
+              ),
+              onTap: items[i].onTap,
+            ),
+            if (i < items.length - 1)
+              const Divider(height: 1, indent: 52, endIndent: 16),
+          ],
+        ],
+      ),
+    );
+
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
-          const Text(
-            'Akun Saya',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 12),
-          CardBox(
-            onTap: () => showPrototypeNotice(
-              c,
-              'Profil Lokal',
-              'Autentikasi belum tersedia. Data kendaraan dan catatan tersimpan lokal.',
-            ),
-            child: const Row(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Color(0xFFE8E8E8),
-                  child: Icon(Icons.person_outline, color: AppColors.ink),
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.surfaceHigh,
+                child: Text(
+                  'OK',
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                SizedBox(width: 14),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Akun Saya',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.4,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Mode prototipe lokal · data di perangkat',
+                      style: TextStyle(color: AppColors.muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Pengaturan akun',
+                onPressed: () => showPrototypeNotice(
+                  c,
+                  'Pengaturan Akun',
+                  'Pengaturan profil tersedia dalam mode demo.',
+                ),
+                icon: const Icon(
+                  Icons.settings_outlined,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          CardBox(
+            color: AppColors.surfaceLow,
+            padding: const EdgeInsets.all(14),
+            onTap: () => push(c, VehicleDetailScreen(state: state)),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.two_wheeler, color: AppColors.red),
+                ),
+                const SizedBox(width: 11),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              state.vehicle.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.greenTint,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Aktif',
+                              style: TextStyle(
+                                color: AppColors.green,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
                       Text(
-                        'Mode prototipe lokal',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
+                        '${state.vehicle.plate} · ${formatKilometers(state.vehicle.mileage)} km',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
                         ),
-                      ),
-                      Text(
-                        'Belum masuk akun',
-                        style: TextStyle(color: AppColors.muted, fontSize: 12),
-                      ),
-                      Text(
-                        'Data tersimpan di perangkat ini',
-                        style: TextStyle(color: AppColors.red, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right),
+                TextButton(
+                  onPressed: () => push(c, VehicleDetailScreen(state: state)),
+                  child: const Text('Ubah'),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          ...actions.map(
-            (action) => CardBox(
-              onTap: action.onTap,
-              child: Row(
-                children: [
-                  Icon(action.icon, color: AppColors.red),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      action.title,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+          menuGroup(actions.take(5).toList()),
+          const SizedBox(height: 14),
+          menuGroup(actions.skip(5).toList()),
+          const SizedBox(height: 14),
+          CardBox(
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: AppColors.red),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Prototipe lokal. Tidak ada autentikasi atau sinkronisasi akun.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 12,
+                      height: 1.4,
                     ),
                   ),
-                  const Icon(Icons.chevron_right, color: AppColors.muted),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -5105,15 +5675,112 @@ class CheckoutScreen extends StatelessWidget {
           .toList();
       return Page(
         title: 'Keranjang & Checkout',
+        bottomBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Subtotal simulasi',
+                        style: TextStyle(color: AppColors.muted, fontSize: 11),
+                      ),
+                      Text(
+                        'Rp ${formatKilometers(state.cartSubtotal)}',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton(
+                  onPressed: items.isEmpty
+                      ? null
+                      : () async {
+                          final order = await state.checkout();
+                          if (!context.mounted) return;
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderConfirmationScreen(
+                                state: state,
+                                order: order,
+                              ),
+                            ),
+                          );
+                        },
+                  child: const Text('Buat Pesanan Demo'),
+                ),
+              ],
+            ),
+          ),
+        ),
         child: ScrollPage(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Ringkasan pesanan',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.redTint,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.red.withValues(alpha: .12),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.shield_outlined, color: AppColors.red, size: 17),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Checkout simulasi · tidak ada pembayaran nyata',
+                        style: TextStyle(
+                          color: AppColors.redDark,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Ringkasan pesanan',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${items.length} item',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               if (items.isEmpty)
                 const CardBox(
                   child: Text('Keranjang kosong. Tambahkan produk dari Shop.'),
@@ -5172,56 +5839,139 @@ class CheckoutScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SectionTitle('Alamat pengiriman · demo lokal'),
-              const CardBox(
-                child: Text(
-                  'Alamat belum diatur. Checkout ini hanya simulasi lokal; tidak ada pengiriman nyata.',
+              const SectionTitle('Alamat pengiriman'),
+              CardBox(
+                onTap: () => showPrototypeNotice(
+                  context,
+                  'Alamat Pengiriman',
+                  'Penyimpanan alamat belum tersedia pada prototipe lokal.',
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors.redTint,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.location_on_outlined,
+                        color: AppColors.red,
+                        size: 19,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Alamat belum diatur',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Checkout ini tidak melakukan pengiriman.',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: AppColors.muted),
+                  ],
                 ),
               ),
               const SectionTitle('Pembayaran'),
               const CardBox(
-                child: Text(
-                  'Belum ada pembayaran. Pesanan akan berstatus Menunggu pembayaran.',
-                ),
-              ),
-              const SizedBox(height: 12),
-              CardBox(
+                color: AppColors.surfaceLow,
                 child: Row(
                   children: [
-                    const Expanded(
-                      child: Text(
-                        'Subtotal demo',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                    Icon(
+                      Icons.do_not_disturb_on_outlined,
+                      color: AppColors.muted,
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tidak ada pembayaran',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Mode simulasi · payment_mode: mock',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      'Rp ${formatKilometers(state.cartSubtotal)}',
-                      style: const TextStyle(fontWeight: FontWeight.w900),
-                    ),
+                    StatusChip('SIMULASI', AppColors.muted),
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
-              FilledButton(
-                onPressed: items.isEmpty
-                    ? null
-                    : () async {
-                        final order = await state.checkout();
-                        if (!context.mounted) return;
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => OrderConfirmationScreen(
-                              state: state,
-                              order: order,
+              const SectionTitle('Rincian pembayaran'),
+              CardBox(
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Subtotal produk',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
                             ),
                           ),
-                        );
-                      },
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
+                        ),
+                        Text(
+                          'Rp ${formatKilometers(state.cartSubtotal)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Divider(height: 1),
+                    ),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Total simulasi',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          'Rp ${formatKilometers(state.cartSubtotal)}',
+                          style: const TextStyle(
+                            color: AppColors.red,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                child: const Text('Buat Pesanan Demo'),
               ),
             ],
           ),
