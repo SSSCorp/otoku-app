@@ -1,17 +1,46 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:marionette_flutter/marionette_flutter.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-void main() => runApp(const OtoKuApp());
+import 'data/oto_ku_repository.dart';
+
+Future<void> main() async {
+  // Marionette gives AI agents (via the marionette MCP server) eyes and hands
+  // on the running app in debug builds; release builds use the normal binding.
+  if (kDebugMode) {
+    MarionetteBinding.ensureInitialized();
+  } else {
+    WidgetsFlutterBinding.ensureInitialized();
+  }
+  if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+  final repository = await SqliteOtoKuRepository.open();
+  runApp(OtoKuApp(repository: repository));
+}
+
+String formatKilometers(int value) => value.toString().replaceAllMapped(
+  RegExp(r'\B(?=(\d{3})+(?!\d))'),
+  (_) => '.',
+);
 
 class AppColors {
   static const red = Color(0xFFE21B23), redDark = Color(0xFFB81218);
-  static const ink = Color(0xFF171717), muted = Color(0xFF6B6B6B);
-  static const bg = Color(0xFFF7F7F7), border = Color(0xFFE8E8E8);
-  static const green = Color(0xFF22A447), amber = Color(0xFFF59E0B);
+  static const ink = Color(0xFF151C27), muted = Color(0xFF575E70);
+  static const bg = Color(0xFFF9F9FF), border = Color(0xFFE7EAF3);
+  static const green = Color(0xFF008438), amber = Color(0xFFF59E0B);
   static const redTint = Color(0xFFFDECEC), greenTint = Color(0xFFE6F6EA);
-  static const amberTint = Color(0xFFFEF3DC), darkSurface = Color(0xFF1A1A1A);
+  static const amberTint = Color(0xFFFEF3DC), darkSurface = Color(0xFF151C27);
+  // Cool blue-tinted surface containers (Stitch-inspired).
+  static const surfaceLow = Color(0xFFF0F3FF);
+  static const surfaceHigh = Color(0xFFE2E8F8);
+  static const navy = Color(0xFF2A313D);
 }
 
 class Vehicle {
@@ -40,15 +69,47 @@ class Product {
     this.icon, {
     this.fitment = ProductFitment.unknown,
   });
+  String get id => name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  String get imageAsset => switch (icon) {
+    'oil' => 'assets/product_images/engine_oil.jpg',
+    'brake' =>
+      name.contains('Mobil')
+          ? 'assets/product_images/car_brake_pads.jpg'
+          : 'assets/product_images/motorcycle_brake_pads.jpg',
+    'filter' => 'assets/product_images/air_filter.jpg',
+    'battery' => 'assets/product_images/motorcycle_battery.jpg',
+    'lamp' => 'assets/product_images/led_bulb.jpg',
+    _ => '',
+  };
 }
 
 class Workshop {
-  final String name, rating, distance, services;
-  Workshop(this.name, this.rating, this.distance, this.services);
+  final String name, rating, distance, services, category, address;
+  final bool partner, bookingEnabled;
+  Workshop(
+    this.name,
+    this.rating,
+    this.distance,
+    this.services, {
+    this.category = 'Bengkel',
+    this.address = 'Bekasi Utara · lokasi demo',
+    this.partner = false,
+    this.bookingEnabled = false,
+  });
 }
 
 class OtoKuState extends ChangeNotifier {
-  final vehicle = Vehicle(
+  OtoKuState({OtoKuRepository? repository})
+    : repository = repository ?? MemoryOtoKuRepository();
+
+  final OtoKuRepository repository;
+  bool onboardingComplete = false;
+  bool initialized = false;
+  final logs = <Map<String, dynamic>>[];
+  final bookings = <String>[];
+  final completedMaintenance = <String>{};
+
+  Vehicle vehicle = Vehicle(
     brand: 'Honda',
     model: 'Beat',
     plate: 'B 1234 XYZ',
@@ -63,25 +124,24 @@ class OtoKuState extends ChangeNotifier {
       'Oli & Cairan',
       'Rp 65.000',
       'oil',
-      fitment: ProductFitment.confirmed,
+      fitment: ProductFitment.possibleUnverified,
     ),
     Product(
       'Kampas Rem Depan Beat',
       'Rem',
       'Rp 85.000',
       'brake',
-      fitment: ProductFitment.confirmed,
+      fitment: ProductFitment.possibleUnverified,
     ),
     Product(
       'Filter Udara Honda Beat',
       'Filter',
       'Rp 42.000',
       'filter',
-      fitment: ProductFitment.confirmed,
+      fitment: ProductFitment.possibleUnverified,
     ),
     Product('Aki Motor YTZ5S', 'Aki', 'Rp 185.000', 'battery'),
     Product('Lampu LED Universal', 'Aksesori', 'Rp 75.000', 'lamp'),
-    Product('Scanner OBD Bluetooth', 'Perangkat OBD', 'Rp 249.000', 'obd'),
     Product(
       'Kampas Rem Mobil Avanza',
       'Rem',
@@ -93,66 +153,242 @@ class OtoKuState extends ChangeNotifier {
   final workshops = [
     Workshop(
       'Bengkel Jaya Motor',
-      '4.7 (238)',
-      '2.1 km',
+      'Belum dinilai',
+      '2.1 km (demo)',
       'Servis Rutin · Ganti Oli',
+      category: 'Bengkel',
+      partner: true,
+      bookingEnabled: true,
     ),
     Workshop(
       'AutoCare Plus',
-      '4.6 (120)',
-      '3.4 km',
+      'Belum dinilai',
+      '3.4 km (demo)',
       'Spesialis CVT · Rem · Oli',
+      category: 'Bengkel',
     ),
-    Workshop('Speed Motor', '4.5 (98)', '4.2 km', 'Servis Lengkap · Body Part'),
+    Workshop(
+      'Speed Motor',
+      'Belum dinilai',
+      '4.2 km (demo)',
+      'Servis Lengkap · Body Part',
+      category: 'Bengkel',
+    ),
+    Workshop(
+      'SPBU Pertamina Demo',
+      'Belum dinilai',
+      '1.8 km (demo)',
+      'Bahan bakar · area Bekasi Utara',
+      category: 'SPBU',
+    ),
+    Workshop(
+      'Minimarket Demo',
+      'Belum dinilai',
+      '0.9 km (demo)',
+      'Kebutuhan perjalanan · area Bekasi Utara',
+      category: 'Minimarket',
+    ),
   ];
   final cart = <Product>[];
-  final orders = <String>[
-    '#SP250922001 • Kampas Rem Depan • Honda Beat • Rp 85.000 • Diproses • 22 Sep 2025',
-    '#SP250918003 • Oli Shell Advance • Rp 79.000 • Pesanan Selesai • 18 Sep 2025',
-    '#SV250915002 • Ganti Oli • Bengkel Jaya Motor • Rp 60.000 • Selesai • 15 Sep 2025',
-    '#SV250901004 • Servis Rutin • Bengkel AutoCare • Rp 80.000 • Selesai • 01 Sep 2025',
-  ];
-  void connectObd() {
+  final orders = <String>[];
+  Future<void> restore() async {
+    onboardingComplete = await repository.hasCompletedOnboarding();
+    final saved = await repository.loadState();
+    if (saved != null) {
+      final savedVehicle = saved['vehicle'];
+      final details = savedVehicle is Map
+          ? Map<String, dynamic>.from(savedVehicle)
+          : <String, dynamic>{};
+      final mileage = details['mileage'] ?? saved['mileage'];
+      vehicle = Vehicle(
+        brand: details['brand'] as String? ?? vehicle.brand,
+        model: details['model'] as String? ?? vehicle.model,
+        plate: details['plate'] as String? ?? vehicle.plate,
+        type: details['type'] as String? ?? vehicle.type,
+        year: details['year'] as int? ?? vehicle.year,
+        mileage: mileage is int && mileage >= 0 ? mileage : vehicle.mileage,
+      );
+      obdConnected = saved['obdConnected'] == true;
+      orders
+        ..clear()
+        ..addAll((saved['orders'] as List<dynamic>? ?? []).cast<String>());
+      cart
+        ..clear()
+        ..addAll(
+          (saved['cart'] as List<dynamic>? ?? [])
+              .cast<String>()
+              .map((id) => products.where((product) => product.id == id))
+              .where((matches) => matches.isNotEmpty)
+              .map((matches) => matches.first),
+        );
+      logs
+        ..clear()
+        ..addAll(
+          (saved['logs'] as List<dynamic>? ?? []).whereType<Map>().map(
+            (log) => Map<String, dynamic>.from(log),
+          ),
+        );
+      bookings
+        ..clear()
+        ..addAll((saved['bookings'] as List<dynamic>? ?? []).cast<String>());
+      completedMaintenance
+        ..clear()
+        ..addAll(
+          (saved['completedMaintenance'] as List<dynamic>? ?? [])
+              .cast<String>(),
+        );
+    }
+    initialized = true;
+    notifyListeners();
+  }
+
+  Future<void> finishOnboarding() async {
+    onboardingComplete = true;
+    await repository.completeOnboarding();
+    notifyListeners();
+  }
+
+  Future<void> _persist() => repository.saveState({
+    'mileage': vehicle.mileage,
+    'vehicle': {
+      'brand': vehicle.brand,
+      'model': vehicle.model,
+      'plate': vehicle.plate,
+      'type': vehicle.type,
+      'year': vehicle.year,
+      'mileage': vehicle.mileage,
+    },
+    'obdConnected': obdConnected,
+    'cart': cart.map((product) => product.id).toList(),
+    'orders': orders,
+    'logs': logs,
+    'bookings': bookings,
+    'completedMaintenance': completedMaintenance.toList(),
+  });
+
+  Future<void> connectObd() async {
     obdConnected = true;
     notifyListeners();
+    await _persist();
   }
 
-  void disconnectObd() {
+  Future<void> disconnectObd() async {
     obdConnected = false;
     notifyListeners();
+    await _persist();
   }
 
-  void add(Product p) {
-    if (!cart.contains(p)) cart.add(p);
+  int quantityOf(Product product) =>
+      cart.where((item) => item.id == product.id).length;
+
+  int get cartSubtotal => cart.fold(
+    0,
+    (sum, product) =>
+        sum + int.parse(product.price.replaceAll(RegExp(r'[^0-9]'), '')),
+  );
+
+  Future<void> add(Product p) async {
+    cart.add(p);
     notifyListeners();
+    await _persist();
   }
 
-  void checkout(String label) {
-    orders.insert(
-      0,
-      '#SP${DateTime.now().millisecondsSinceEpoch.toString().substring(5)} • $label • Diproses',
-    );
+  Future<void> removeOne(Product product) async {
+    final index = cart.lastIndexWhere((item) => item.id == product.id);
+    if (index >= 0) cart.removeAt(index);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<String> checkout() async {
+    if (cart.isEmpty) throw StateError('Cart is empty.');
+    final id =
+        '#SP${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+    final date = DateTime.now();
+    final summary = cart
+        .map((product) => '${quantityOf(product)}x ${product.name}')
+        .toSet()
+        .join(', ');
+    final order =
+        '$id • $summary • Menunggu pembayaran • Rp ${formatKilometers(cartSubtotal)} • ${date.day}/${date.month}/${date.year}';
+    orders.insert(0, order);
     cart.clear();
     notifyListeners();
+    await _persist();
+    return order;
   }
 
-  void addBooking(String workshop) {
+  Future<String> addBooking(
+    String workshop, {
+    required List<String> services,
+    required DateTime date,
+    required String time,
+    String notes = '',
+  }) async {
+    final booking =
+        'Booking $workshop · ${services.join(', ')} · ${date.day}/${date.month}/${date.year} $time${notes.trim().isEmpty ? '' : ' · Catatan: ${notes.trim()}'}';
+    bookings.insert(0, booking);
     orders.insert(
       0,
-      '#SV${DateTime.now().millisecondsSinceEpoch.toString().substring(5)} • Booking $workshop • Diproses',
+      '#SV${DateTime.now().millisecondsSinceEpoch.toString().substring(5)} • $booking • Menunggu konfirmasi • ${date.day}/${date.month}/${date.year}',
     );
     notifyListeners();
+    await _persist();
+    return booking;
   }
+
+  Future<void> addLog(Map<String, dynamic> log) async {
+    logs.insert(0, log);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> completeMaintenance(String title) async {
+    completedMaintenance.add(title);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> updateVehicle(Vehicle updated) async {
+    if (updated.mileage < vehicle.mileage) {
+      throw ArgumentError('Odometer cannot decrease without correction.');
+    }
+    final mileageChanged = updated.mileage != vehicle.mileage;
+    vehicle = updated;
+    if (mileageChanged) {
+      logs.insert(0, {
+        'type': 'odometer',
+        'title': 'Kilometer diperbarui',
+        'value': updated.mileage,
+        'date': DateTime.now().toIso8601String(),
+        'source': 'manual',
+      });
+    }
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> updateMileage(int mileage) => updateVehicle(
+    Vehicle(
+      brand: vehicle.brand,
+      model: vehicle.model,
+      plate: vehicle.plate,
+      type: vehicle.type,
+      year: vehicle.year,
+      mileage: mileage,
+    ),
+  );
 }
 
 class OtoKuApp extends StatefulWidget {
-  const OtoKuApp({super.key});
+  final OtoKuRepository? repository;
+  const OtoKuApp({super.key, this.repository});
   @override
   State<OtoKuApp> createState() => _OtoKuAppState();
 }
 
 class _OtoKuAppState extends State<OtoKuApp> {
-  final state = OtoKuState();
+  late final state = OtoKuState(repository: widget.repository);
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: state,
@@ -167,15 +403,50 @@ class _OtoKuAppState extends State<OtoKuApp> {
           primary: AppColors.red,
           surface: Colors.white,
         ),
-        fontFamily: 'SF Pro Text',
-        fontFamilyFallback: const ['Roboto', 'Arial'],
+        fontFamily: 'Plus Jakarta Sans',
+        dividerColor: AppColors.border,
+        textTheme: const TextTheme(
+          headlineMedium: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -.5,
+            color: AppColors.ink,
+          ),
+          titleLarge: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -.3,
+            color: AppColors.ink,
+          ),
+          titleMedium: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -.2,
+            color: AppColors.ink,
+          ),
+          bodyMedium: TextStyle(color: AppColors.ink, height: 1.35),
+          bodySmall: TextStyle(color: AppColors.muted, height: 1.35),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.surfaceLow,
+          hintStyle: const TextStyle(color: AppColors.muted),
+          border: OutlineInputBorder(
+            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.red,
             foregroundColor: Colors.white,
             minimumSize: const Size(48, 48),
+            textStyle: const TextStyle(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -.1,
+            ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(12),
             ),
           ),
         ),
@@ -216,6 +487,11 @@ class _OtoKuAppState extends State<OtoKuApp> {
   );
 }
 
+/// Subtle card shadow used across white surfaces.
+const _cardShadow = [
+  BoxShadow(color: Color(0x14101828), blurRadius: 18, offset: Offset(0, 5)),
+];
+
 class SplashScreen extends StatefulWidget {
   final OtoKuState state;
   const SplashScreen({super.key, required this.state});
@@ -227,14 +503,17 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(milliseconds: 1100), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => AppShell(state: widget.state)),
-        );
-      }
-    });
+    _openApp();
+  }
+
+  Future<void> _openApp() async {
+    await widget.state.restore();
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+    final next = widget.state.onboardingComplete
+        ? AppShell(state: widget.state)
+        : OnboardingScreen(state: widget.state);
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
   }
 
   @override
@@ -245,28 +524,14 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const CarMark(size: 118),
-            const SizedBox(height: 26),
-            RichText(
-              text: const TextSpan(
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -1.4,
-                ),
-                children: [
-                  TextSpan(
-                    text: 'Oto',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  TextSpan(
-                    text: 'Ku',
-                    style: TextStyle(color: AppColors.red),
-                  ),
-                ],
-              ),
+            Image.asset(
+              'assets/OtoKu Logo.png',
+              width: 220,
+              height: 88,
+              fit: BoxFit.contain,
+              semanticLabel: 'OtoKu',
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             const Text(
               'Perawatan kendaraan lebih mudah,\nselalu terpantau.',
               textAlign: TextAlign.center,
@@ -274,6 +539,153 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: Colors.white70,
                 height: 1.5,
                 fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class OnboardingScreen extends StatefulWidget {
+  final OtoKuState state;
+  const OnboardingScreen({super.key, required this.state});
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final _controller = PageController();
+  int _page = 0;
+  static const _pages = [
+    (
+      Icons.two_wheeler_outlined,
+      'Rawat kendaraan lebih mudah',
+      'Catat kilometer, servis, dan pengeluaran kendaraan dalam satu tempat.',
+    ),
+    (
+      Icons.health_and_safety_outlined,
+      'Kamu tetap bisa tanpa OBD',
+      'Fitur perawatan manual tetap berjalan. Data OBD demo selalu diberi label simulasi.',
+    ),
+    (
+      Icons.storefront_outlined,
+      'Temukan produk dan bengkel',
+      'Cari kebutuhan kendaraan dan lihat status kecocokannya sebelum memilih.',
+    ),
+  ];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _finish() async {
+    await widget.state.finishOnboarding();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => AppShell(state: widget.state)),
+    );
+  }
+
+  void _next() {
+    if (_page == _pages.length - 1) {
+      _finish();
+    } else {
+      _controller.nextPage(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.bg,
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Image.asset('assets/OtoKu Logo.png', width: 86, height: 32),
+                const Spacer(),
+                TextButton(onPressed: _finish, child: const Text('Lewati')),
+              ],
+            ),
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: _pages.length,
+                onPageChanged: (index) => setState(() => _page = index),
+                itemBuilder: (context, index) {
+                  final page = _pages[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 180,
+                          height: 180,
+                          decoration: BoxDecoration(
+                            color: AppColors.redTint,
+                            borderRadius: BorderRadius.circular(48),
+                          ),
+                          child: Icon(page.$1, color: AppColors.red, size: 82),
+                        ),
+                        const SizedBox(height: 36),
+                        Text(
+                          page.$2,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            height: 1.15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          page.$3,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            height: 1.5,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                _pages.length,
+                (index) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: _page == index ? 22 : 7,
+                  height: 7,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: _page == index ? AppColors.red : AppColors.border,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _next,
+                child: Text(_page == _pages.length - 1 ? 'Mulai' : 'Lanjut'),
               ),
             ),
           ],
@@ -395,18 +807,22 @@ class CardBox extends StatelessWidget {
     this.onTap,
   });
   @override
-  Widget build(BuildContext context) => Card(
-    margin: EdgeInsets.zero,
-    elevation: 0,
-    color: color,
-    shape: RoundedRectangleBorder(
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: color,
       borderRadius: BorderRadius.circular(18),
-      side: const BorderSide(color: AppColors.border),
+      border: Border.all(color: AppColors.border),
+      boxShadow: _cardShadow,
     ),
-    child: InkWell(
-      onTap: onTap,
+    child: Material(
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(18),
-      child: Padding(padding: padding, child: child),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(padding: padding, child: child),
+      ),
     ),
   );
 }
@@ -423,18 +839,33 @@ class SectionTitle extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -.3,
+          ),
         ),
         const Spacer(),
         if (action != null)
           TextButton(
             onPressed: onTap,
-            child: Text(
-              action!,
-              style: const TextStyle(
-                color: AppColors.red,
-                fontWeight: FontWeight.w700,
-              ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: Size.zero,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  action!,
+                  style: const TextStyle(
+                    color: AppColors.red,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const Icon(Icons.arrow_forward, size: 14, color: AppColors.red),
+              ],
             ),
           ),
       ],
@@ -460,7 +891,7 @@ class Pill extends StatelessWidget {
           ? AppColors.red
           : selectedTint
           ? AppColors.redTint
-          : const Color(0xFFF1F1EF),
+          : AppColors.surfaceLow,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
         color: active || selectedTint ? AppColors.red : Colors.transparent,
@@ -515,9 +946,9 @@ class HomeVehicleCard extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFFFCE7E6),
-                              Color(0xFFF5D9D6),
-                              Color(0xFFF0E8E2),
+                              Color(0xFFF0F3FF),
+                              Color(0xFFE2E8F8),
+                              Color(0xFFDCE2F3),
                             ],
                           ),
                         ),
@@ -671,36 +1102,51 @@ class HomeVehicleCard extends StatelessWidget {
               const Divider(height: 1, indent: 16, endIndent: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(13, 12, 13, 14),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _VehicleStat(
+                child: Builder(
+                  builder: (context) {
+                    final stats = <_VehicleStatData>[
+                      _VehicleStatData(
                         icon: Icons.speed_outlined,
-                        value: '12.450',
+                        value: formatKilometers(vehicle.mileage),
                         unit: 'km',
                         label: 'JARAK TEMPUH',
                       ),
-                    ),
-                    Container(width: 1, height: 34, color: AppColors.border),
-                    Expanded(
-                      child: _VehicleStat(
+                      _VehicleStatData(
                         icon: Icons.build_outlined,
-                        value: 'Mar 2025',
+                        value: 'Belum dicatat',
                         unit: '',
                         label: 'SERVIS TERAKHIR',
                       ),
-                    ),
-                    Container(width: 1, height: 34, color: AppColors.border),
-                    const Expanded(
-                      child: _VehicleStat(
-                        icon: Icons.favorite_border,
-                        value: 'Baik',
+                      _VehicleStatData(
+                        icon: Icons.info_outline,
+                        value: 'Belum dicek',
                         unit: '',
                         label: 'KONDISI',
-                        good: true,
                       ),
-                    ),
-                  ],
+                    ];
+                    return Row(
+                      children: [
+                        for (final (index, stat) in stats.indexed) ...[
+                          if (index > 0) const SizedBox(width: 6),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceLow,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: _VehicleStat(
+                                icon: stat.icon,
+                                value: stat.value,
+                                unit: stat.unit,
+                                label: stat.label,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -711,22 +1157,31 @@ class HomeVehicleCard extends StatelessWidget {
   }
 }
 
+class _VehicleStatData {
+  final IconData icon;
+  final String value, unit, label;
+  const _VehicleStatData({
+    required this.icon,
+    required this.value,
+    required this.unit,
+    required this.label,
+  });
+}
+
 class _VehicleStat extends StatelessWidget {
   final IconData icon;
   final String value, unit, label;
-  final bool good;
   const _VehicleStat({
     required this.icon,
     required this.value,
     required this.unit,
     required this.label,
-    this.good = false,
   });
   @override
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(icon, size: 15, color: good ? AppColors.green : AppColors.muted),
+      Icon(icon, size: 15, color: AppColors.muted),
       const SizedBox(height: 4),
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +1191,7 @@ class _VehicleStat extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: good ? AppColors.green : AppColors.ink,
+              color: AppColors.ink,
             ),
           ),
           if (unit.isNotEmpty)
@@ -774,33 +1229,38 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: Row(
                 children: [
-                  RichText(
-                    text: const TextSpan(
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.8,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: 'Oto',
-                          style: TextStyle(color: AppColors.ink),
-                        ),
-                        TextSpan(
-                          text: 'Ku',
-                          style: TextStyle(color: AppColors.red),
-                        ),
-                      ],
-                    ),
+                  Image.asset(
+                    'assets/OtoKu Logo.png',
+                    width: 104,
+                    height: 36,
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.contain,
+                    semanticLabel: 'OtoKu',
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () => showNotificationSheet(context),
-                    icon: const Icon(Icons.notifications_none),
+                  Stack(
+                    children: [
+                      IconButton(
+                        onPressed: () => showNotificationSheet(context),
+                        icon: const Icon(Icons.notifications_none),
+                      ),
+                      const Positioned(
+                        top: 10,
+                        right: 10,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: SizedBox(width: 8, height: 8),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(width: 4),
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: AppColors.ink,
+                    backgroundColor: AppColors.red,
                     child: const Text(
                       'AB',
                       style: TextStyle(
@@ -829,6 +1289,7 @@ class HomeScreen extends StatelessWidget {
                   onTap: () => push(context, MaintenanceScreen(state: state)),
                 ),
                 MaintenanceCard(
+                  state: state,
                   onTap: () => push(context, MaintenanceScreen(state: state)),
                 ),
                 const SizedBox(height: 16),
@@ -851,6 +1312,21 @@ class HomeScreen extends StatelessWidget {
                   ),
                   HealthSummary(state: state),
                 ],
+                const SizedBox(height: 18),
+                SectionTitle(
+                  'Catatan kendaraan',
+                  action: '+ Catat',
+                  onTap: () => push(context, ManualLogScreen(state: state)),
+                ),
+                CardBox(
+                  onTap: () => push(context, HistoryScreen(state: state)),
+                  child: Text(
+                    state.logs.isEmpty
+                        ? 'Belum ada catatan. Tambahkan kilometer, BBM, servis, atau biaya.'
+                        : '${state.logs.first['title']} · Catatan terbaru',
+                    style: const TextStyle(color: AppColors.muted),
+                  ),
+                ),
               ]),
             ),
           ),
@@ -860,114 +1336,212 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class LockedObdCard extends StatelessWidget {
+class LockedObdCard extends StatefulWidget {
   final OtoKuState state;
   const LockedObdCard({super.key, required this.state});
   @override
+  State<LockedObdCard> createState() => _LockedObdCardState();
+}
+
+class _LockedObdCardState extends State<LockedObdCard> {
+  late final PageController _controller;
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Container(
+    height: 192,
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(16),
       gradient: const LinearGradient(
-        colors: [Color(0xFF262626), AppColors.darkSurface],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppColors.navy, AppColors.darkSurface],
       ),
       boxShadow: [
         BoxShadow(
-          color: AppColors.red.withValues(alpha: .12),
+          color: AppColors.red.withValues(alpha: .14),
           blurRadius: 24,
-          offset: const Offset(0, 5),
+          offset: const Offset(0, 6),
         ),
       ],
     ),
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    clipBehavior: Clip.antiAlias,
+    child: Stack(
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        PageView(
+          controller: _controller,
+          onPageChanged: (page) => setState(() => _page = page),
           children: [
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            _ObdAdSlide(
+              eyebrow: 'FITUR OtoKu',
+              title: 'Coba simulasi OBD',
+              body: 'Contoh data kendaraan — OBD belum terhubung.',
+              action: 'Lihat demo OBD',
+              icon: Icons.memory_outlined,
+              onTap: () => showObdSheet(context, widget.state),
+            ),
+            _ObdAdSlide(
+              eyebrow: 'LEBIH TERPANTAU',
+              title: 'Data mesin, lebih mudah dipahami',
+              body: 'Pantau RPM, suhu mesin, dan indikasi masalah dengan bahasa sederhana.',
+              action: 'Coba simulasi',
+              icon: Icons.insights_outlined,
+              onTap: () => showObdSheet(context, widget.state),
+            ),
+            _ObdAdSlide(
+              eyebrow: 'LENGKAPI PERAWATAN',
+              title: 'Perawatan kendaraan lebih mudah',
+              body: 'Temukan suku cadang dan layanan yang sesuai untuk kendaraanmu.',
+              action: 'Buka Shop',
+              icon: Icons.shopping_bag_outlined,
+              onTap: () => push(context, CatalogScreen(state: widget.state)),
+            ),
+          ],
+        ),
+        Positioned(
+          left: 18,
+          bottom: 12,
+          child: Row(
+            children: [
+              ...List.generate(
+                3,
+                (index) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.only(right: 5),
+                  width: index == _page ? 16 : 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: index == _page ? AppColors.red : Colors.white38,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'Geser untuk melihat',
+                style: TextStyle(color: Colors.white60, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ObdAdSlide extends StatelessWidget {
+  final String eyebrow, title, body, action;
+  final IconData? icon;
+  final VoidCallback onTap;
+  const _ObdAdSlide({
+    required this.eyebrow,
+    required this.title,
+    required this.body,
+    required this.action,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(18, 16, 18, 26),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
                 children: [
+                  Icon(icon, color: AppColors.red, size: 18),
+                  const SizedBox(width: 7),
                   Text(
-                    'Hubungkan OBD',
-                    style: TextStyle(
-                      color: Colors.white,
+                    eyebrow,
+                    style: const TextStyle(
+                      color: AppColors.red,
+                      fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    'Mode simulasi untuk prototipe',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'OBD asli belum diaktifkan. Data yang ditampilkan di prototipe adalah simulasi.',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      height: 1.4,
-                      fontSize: 11,
+                      letterSpacing: .7,
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            const OBDIllustration(),
-          ],
-        ),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: () => showObdSheet(context, state),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Lihat demo OBD'),
-                SizedBox(width: 8),
-                Icon(Icons.chevron_right),
-              ],
-            ),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                body,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  height: 1.3,
+                ),
+              ),
+              const SizedBox(height: 9),
+              InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        action,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      const Icon(
+                        Icons.arrow_forward,
+                        color: AppColors.red,
+                        size: 15,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 14),
-        const Row(
-          children: [
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.speed_outlined,
-                label: 'Data simulasi',
-              ),
-            ),
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.manage_search,
-                label: 'Deteksi masalah',
-              ),
-            ),
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.build_outlined,
-                label: 'Rekomendasi servis',
-              ),
-            ),
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.hub_outlined,
-                label: 'Terintegrasi sparepart & bengkel',
-              ),
-            ),
-          ],
+        const SizedBox(width: 12),
+        Container(
+          width: 58,
+          height: 58,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: .08),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: .08)),
+          ),
+          child: Icon(icon ?? Icons.memory, color: Colors.white70, size: 28),
         ),
       ],
     ),
@@ -1223,43 +1797,69 @@ class HealthSummary extends StatelessWidget {
 }
 
 class MaintenanceCard extends StatelessWidget {
+  final OtoKuState state;
   final VoidCallback onTap;
-  const MaintenanceCard({super.key, required this.onTap});
+  const MaintenanceCard({super.key, required this.state, required this.onTap});
   @override
-  Widget build(BuildContext context) => CardBox(
-    color: AppColors.redTint,
-    onTap: onTap,
-    child: Row(
-      children: [
-        const CircleAvatar(
-          backgroundColor: Colors.white,
-          child: Icon(Icons.oil_barrel_outlined, color: AppColors.red),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Ganti Oli Mesin',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              const Text(
-                'Dalam 1.550 km',
-                style: TextStyle(color: AppColors.muted, fontSize: 12),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                'Perkiraan: Okt 2025',
-                style: TextStyle(color: AppColors.muted, fontSize: 10),
-              ),
-            ],
+  Widget build(BuildContext context) {
+    final done = state.completedMaintenance.contains('Ganti Oli Mesin');
+    return CardBox(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: done ? AppColors.greenTint : AppColors.redTint,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              Icons.oil_barrel_outlined,
+              color: done ? AppColors.green : AppColors.red,
+            ),
           ),
-        ),
-        const Icon(Icons.chevron_right, color: AppColors.red),
-      ],
-    ),
-  );
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Flexible(
+                      child: Text(
+                        'Ganti Oli Mesin',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    StatusChip(
+                      done ? 'Selesai' : 'Segera',
+                      done ? AppColors.green : AppColors.red,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  done
+                      ? 'Ditandai selesai oleh kamu'
+                      : 'Estimasi target: ${formatKilometers((14000 - state.vehicle.mileage).clamp(0, 14000))} km lagi',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Jadwal perkiraan · cek buku servis',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: AppColors.muted),
+        ],
+      ),
+    );
+  }
 }
 
 class Metric extends StatelessWidget {
@@ -1314,15 +1914,15 @@ void showObdSheet(BuildContext context, OtoKuState state) =>
           children: [
             Text(
               state.obdConnected
-                  ? 'OBD OtoKu Terhubung'
-                  : 'Buka data kendaraan real-time',
+                  ? 'Simulasi OBD aktif'
+                  : 'Coba simulasi data OBD',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(
               state.obdConnected
-                  ? 'Nikmati pemantauan kondisi kendaraan dan kode masalah secara berkala.'
-                  : 'Dapatkan RPM, suhu mesin, konsumsi BBM, dan deteksi masalah lebih awal.',
+                  ? 'Contoh RPM, suhu mesin, dan kode masalah. Data ini bukan pembacaan langsung dari kendaraan.'
+                  : 'Lihat contoh RPM, suhu mesin, dan kode masalah. Perangkat OBD belum terhubung.',
               style: const TextStyle(color: AppColors.muted, height: 1.4),
             ),
             const SizedBox(height: 18),
@@ -1332,7 +1932,7 @@ void showObdSheet(BuildContext context, OtoKuState state) =>
                 Navigator.pop(context);
               },
               child: Text(
-                state.obdConnected ? 'Putuskan OBD' : 'Hubungkan OBD',
+                state.obdConnected ? 'Tutup simulasi' : 'Lihat simulasi OBD',
               ),
             ),
           ],
@@ -1356,15 +1956,11 @@ void showNotificationSheet(BuildContext context) {
           SizedBox(height: 18),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.build_circle_outlined, color: AppColors.red),
-            title: Text('Perawatan mendatang'),
-            subtitle: Text('Ganti oli mesin dalam 1.550 km'),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.shopping_bag_outlined),
-            title: Text('Pesanan diproses'),
-            subtitle: Text('Kampas Rem Depan sedang dikemas'),
+            leading: Icon(Icons.notifications_none, color: AppColors.muted),
+            title: Text('Belum ada notifikasi'),
+            subtitle: Text(
+              'Pengingat akan muncul setelah kamu mencatat aktivitas atau pesanan.',
+            ),
           ),
         ],
       ),
@@ -1372,28 +1968,129 @@ void showNotificationSheet(BuildContext context) {
   );
 }
 
-void showVehicleActions(BuildContext context) => showModalBottomSheet<void>(
-  context: context,
-  showDragHandle: true,
-  builder: (_) => const SafeArea(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(
-          leading: Icon(Icons.edit_outlined),
-          title: Text('Ubah Data Kendaraan'),
+class VehicleEditScreen extends StatefulWidget {
+  final OtoKuState state;
+  const VehicleEditScreen({super.key, required this.state});
+  @override
+  State<VehicleEditScreen> createState() => _VehicleEditScreenState();
+}
+
+class _VehicleEditScreenState extends State<VehicleEditScreen> {
+  late final _brand = TextEditingController(text: widget.state.vehicle.brand);
+  late final _model = TextEditingController(text: widget.state.vehicle.model);
+  late final _plate = TextEditingController(text: widget.state.vehicle.plate);
+  late final _type = TextEditingController(text: widget.state.vehicle.type);
+  late final _year = TextEditingController(
+    text: '${widget.state.vehicle.year}',
+  );
+  late final _mileage = TextEditingController(
+    text: '${widget.state.vehicle.mileage}',
+  );
+  bool saving = false;
+
+  @override
+  void dispose() {
+    _brand.dispose();
+    _model.dispose();
+    _plate.dispose();
+    _type.dispose();
+    _year.dispose();
+    _mileage.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final year = int.tryParse(_year.text.trim());
+    final mileage = int.tryParse(_mileage.text.trim());
+    if (_brand.text.trim().isEmpty ||
+        _model.text.trim().isEmpty ||
+        _plate.text.trim().isEmpty ||
+        year == null ||
+        mileage == null ||
+        year < 1900 ||
+        year > DateTime.now().year + 1 ||
+        mileage < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Periksa kembali data kendaraan.')),
+      );
+      return;
+    }
+    if (mileage < widget.state.vehicle.mileage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kilometer baru tidak boleh lebih rendah.'),
         ),
-        ListTile(
-          leading: Icon(Icons.delete_outline, color: AppColors.red),
-          title: Text(
-            'Hapus Kendaraan',
-            style: TextStyle(color: AppColors.red),
-          ),
+      );
+      return;
+    }
+    setState(() => saving = true);
+    await widget.state.updateVehicle(
+      Vehicle(
+        brand: _brand.text.trim(),
+        model: _model.text.trim(),
+        plate: _plate.text.trim().toUpperCase(),
+        type: _type.text.trim(),
+        year: year,
+        mileage: mileage,
+      ),
+    );
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Ubah Kendaraan',
+    bottomBar: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton(
+          onPressed: saving ? null : _save,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          child: Text(saving ? 'Menyimpan...' : 'Simpan Perubahan'),
         ),
-      ],
+      ),
     ),
-  ),
-);
+    child: ScrollPage(
+      child: Column(
+        children: [
+          TextField(
+            controller: _brand,
+            decoration: const InputDecoration(labelText: 'Merek'),
+          ),
+          TextField(
+            controller: _model,
+            decoration: const InputDecoration(labelText: 'Model'),
+          ),
+          TextField(
+            controller: _plate,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'Nomor polisi'),
+          ),
+          TextField(
+            controller: _type,
+            decoration: const InputDecoration(labelText: 'Tipe / varian'),
+          ),
+          TextField(
+            controller: _year,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Tahun'),
+          ),
+          TextField(
+            controller: _mileage,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Kilometer terakhir'),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Nomor rangka dan mesin tidak diminta; foto kendaraan belum dapat diubah pada prototipe ini.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 class VehicleDetailScreen extends StatelessWidget {
   final OtoKuState state;
@@ -1403,8 +2100,9 @@ class VehicleDetailScreen extends StatelessWidget {
     title: 'Detail Kendaraan',
     actions: [
       IconButton(
-        onPressed: () => showVehicleActions(context),
-        icon: const Icon(Icons.more_horiz),
+        tooltip: 'Ubah kendaraan',
+        onPressed: () => push(context, VehicleEditScreen(state: state)),
+        icon: const Icon(Icons.edit_outlined),
       ),
     ],
     child: ScrollPage(
@@ -1420,7 +2118,11 @@ class VehicleDetailScreen extends StatelessWidget {
                     color: const Color(0xFFF1F1EF),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const VehiclePhoto(height: 190, detail: true),
+                  child:
+                      state.vehicle.brand == 'Honda' &&
+                          state.vehicle.model.toLowerCase().contains('beat')
+                      ? const VehiclePhoto(height: 190, detail: true)
+                      : const VehicleIllustration(height: 190),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -1441,13 +2143,22 @@ class VehicleDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 ...[
-                  ['Merek', 'Honda'],
-                  ['Model', 'Beat'],
-                  ['Tahun', '2021'],
-                  ['Tipe', 'CBS'],
-                  ['No. Rangka', 'MH1JM3110MK123456'],
-                  ['No. Mesin', 'JM31E1123456'],
+                  ['Merek', state.vehicle.brand],
+                  ['Model', state.vehicle.model],
+                  ['Tahun', '${state.vehicle.year}'],
+                  ['Tipe', state.vehicle.type],
+                  [
+                    'Kilometer',
+                    '${formatKilometers(state.vehicle.mileage)} km',
+                  ],
                 ].map((x) => InfoRow(x[0], x[1])),
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Data kendaraan disimpan lokal pada perangkat ini.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12),
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -1507,24 +2218,12 @@ class VehicleDetailScreen extends StatelessWidget {
             ),
           ),
           CardBox(
+            onTap: () => push(context, VehicleEditScreen(state: state)),
             child: const ListTile(
-              leading: Icon(Icons.edit_outlined),
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.edit_outlined, color: AppColors.red),
               title: Text('Ubah Data Kendaraan'),
               trailing: Icon(Icons.chevron_right),
-            ),
-          ),
-          const SizedBox(height: 8),
-          CardBox(
-            color: AppColors.redTint,
-            child: const ListTile(
-              leading: Icon(Icons.delete_outline, color: AppColors.red),
-              title: Text(
-                'Hapus Kendaraan',
-                style: TextStyle(
-                  color: AppColors.red,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
             ),
           ),
         ],
@@ -1855,104 +2554,332 @@ class CarMarkPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class MaintenanceScreen extends StatelessWidget {
+class MaintenanceScreen extends StatefulWidget {
   final OtoKuState state;
   const MaintenanceScreen({super.key, required this.state});
   @override
+  State<MaintenanceScreen> createState() => _MaintenanceScreenState();
+}
+
+class _MaintenanceScreenState extends State<MaintenanceScreen> {
+  String filter = 'Rekomendasi';
+  static const tasks = <({String title, int target, IconData icon})>[
+    (title: 'Ganti Oli Mesin', target: 14000, icon: Icons.oil_barrel_outlined),
+    (title: 'Cek Kampas Rem', target: 15000, icon: Icons.disc_full),
+    (title: 'Cek Filter Udara', target: 15000, icon: Icons.filter_alt_outlined),
+    (title: 'Cek Busi', target: 17500, icon: Icons.electrical_services),
+    (
+      title: 'Ganti Oli Gear (CVT)',
+      target: 17500,
+      icon: Icons.settings_outlined,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.state.vehicle.mileage;
+    final visible = tasks.where((task) {
+      final done = widget.state.completedMaintenance.contains(task.title);
+      return filter == 'Semua' || (filter == 'Selesai' ? done : !done);
+    }).toList();
+    return Page(
+      title: 'Jadwal Perawatan',
+      child: ScrollPage(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              children: ['Rekomendasi', 'Semua', 'Selesai']
+                  .map(
+                    (value) => ChoiceChip(
+                      label: Text(value),
+                      selected: filter == value,
+                      onSelected: (_) => setState(() => filter = value),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Jarak target adalah estimasi demo, bukan jadwal pabrikan.',
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            if (visible.isEmpty)
+              const CardBox(
+                child: Text('Belum ada perawatan pada filter ini.'),
+              ),
+            ...visible.map((task) {
+              final done = widget.state.completedMaintenance.contains(
+                task.title,
+              );
+              final remaining = task.target - current;
+              final progress = (current / task.target)
+                  .clamp(0.0, 1.0)
+                  .toDouble();
+              return CardBox(
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: AppColors.bg,
+                      child: Icon(task.icon, color: AppColors.red),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            task.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          Text(
+                            done
+                                ? 'Ditandai selesai oleh kamu'
+                                : remaining >= 0
+                                ? 'Estimasi: ${formatKilometers(remaining)} km lagi'
+                                : 'Estimasi terlewat ${formatKilometers(-remaining)} km',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 6,
+                            borderRadius: BorderRadius.circular(8),
+                            color: done ? AppColors.green : AppColors.red,
+                            backgroundColor: AppColors.border,
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${formatKilometers(current)} / ${formatKilometers(task.target)} km · demo',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: done ? 'Selesai' : 'Tandai selesai',
+                      onPressed: done
+                          ? null
+                          : () => widget.state.completeMaintenance(task.title),
+                      icon: Icon(
+                        done ? Icons.check_circle : Icons.check_circle_outline,
+                        color: done ? AppColors.green : AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ManualLogScreen extends StatefulWidget {
+  final OtoKuState state;
+  const ManualLogScreen({super.key, required this.state});
+  @override
+  State<ManualLogScreen> createState() => _ManualLogScreenState();
+}
+
+class _ManualLogScreenState extends State<ManualLogScreen> {
+  final _title = TextEditingController();
+  final _value = TextEditingController();
+  final _mileage = TextEditingController();
+  final _volume = TextEditingController();
+  final _notes = TextEditingController();
+  String type = 'Kilometer';
+  bool saving = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _value.dispose();
+    _mileage.dispose();
+    _volume.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (saving) return;
+    final title = _title.text.trim();
+    final value = int.tryParse(_value.text.trim());
+    final mileage = int.tryParse(_mileage.text.trim());
+    final volume = double.tryParse(_volume.text.trim().replaceAll(',', '.'));
+    if (type == 'BBM' &&
+        _volume.text.trim().isNotEmpty &&
+        (volume == null || volume < 0)) {
+      _showError('Masukkan volume BBM yang valid.');
+      return;
+    }
+    if (type != 'Kilometer' &&
+        _value.text.trim().isNotEmpty &&
+        (value == null || value < 0)) {
+      _showError('Masukkan angka biaya yang valid.');
+      return;
+    }
+    if (_mileage.text.trim().isNotEmpty && (mileage == null || mileage < 0)) {
+      _showError('Masukkan angka kilometer yang valid.');
+      return;
+    }
+    if (type != 'Kilometer' &&
+        mileage != null &&
+        mileage < widget.state.vehicle.mileage) {
+      _showError(
+        'Kilometer aktivitas lebih rendah dari catatan kendaraan. Periksa kembali.',
+      );
+      return;
+    }
+    if (type == 'Kilometer') {
+      if (value == null || value < 0) {
+        _showError('Masukkan angka kilometer yang valid.');
+        return;
+      }
+      if (value < widget.state.vehicle.mileage) {
+        _showError(
+          'Kilometer baru tidak boleh lebih rendah dari catatan sebelumnya.',
+        );
+        return;
+      }
+    } else if (title.isEmpty) {
+      _showError('Isi nama aktivitas terlebih dahulu.');
+      return;
+    }
+
+    setState(() => saving = true);
+    try {
+      if (type == 'Kilometer') {
+        await widget.state.updateMileage(value!);
+      } else {
+        await widget.state.addLog({
+          'type': type.toLowerCase(),
+          'title': title,
+          'amount': value,
+          'volume': type == 'BBM' ? volume : null,
+          'mileage': mileage,
+          'notes': _notes.text.trim(),
+          'date': DateTime.now().toIso8601String(),
+          'source': 'manual',
+        });
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) _showError('Catatan belum dapat disimpan. Coba lagi.');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  void _showError(String message) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
+  @override
   Widget build(BuildContext context) => Page(
-    title: 'Jadwal Perawatan',
+    title: 'Catat Aktivitas',
+    bottomBar: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton(
+          onPressed: saving ? null : _save,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          child: Text(saving ? 'Menyimpan...' : 'Simpan Catatan'),
+        ),
+      ),
+    ),
     child: ScrollPage(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Pill('Rekomendasi', active: true),
-              Pill('Semua'),
-              Pill('Selesai'),
-            ],
+          const Text(
+            'Catat tanpa OBD',
+            style: TextStyle(color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: type,
+            decoration: const InputDecoration(labelText: 'Jenis catatan'),
+            items: const ['Kilometer', 'BBM', 'Servis', 'Biaya', 'Sparepart']
+                .map(
+                  (value) => DropdownMenuItem(value: value, child: Text(value)),
+                )
+                .toList(),
+            onChanged: (value) => setState(() => type = value ?? 'Kilometer'),
           ),
           const SizedBox(height: 14),
-          ...[
-            [
-              'Ganti Oli Mesin',
-              'Dalam 1.550 km',
-              '12.450 / 14.000 km',
-              Icons.oil_barrel_outlined,
-            ],
-            [
-              'Cek Kampas Rem',
-              'Dalam 3.000 km',
-              '12.450 / 15.000 km',
-              Icons.disc_full,
-            ],
-            [
-              'Cek Filter Udara',
-              'Dalam 3.000 km',
-              '12.450 / 15.000 km',
-              Icons.filter_alt_outlined,
-            ],
-            [
-              'Cek Busi',
-              'Dalam 5.000 km',
-              '12.450 / 17.500 km',
-              Icons.electrical_services,
-            ],
-            [
-              'Ganti Oli Gear (CVT)',
-              'Dalam 5.000 km',
-              '12.450 / 17.500 km',
-              Icons.settings_outlined,
-            ],
-          ].map(
-            (x) => CardBox(
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: AppColors.bg,
-                    child: Icon(x[3] as IconData, color: AppColors.red),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          x[0] as String,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        Text(
-                          x[1] as String,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: .72,
-                          minHeight: 6,
-                          borderRadius: BorderRadius.circular(8),
-                          color: (x[0] as String) == 'Ganti Oli Mesin'
-                              ? AppColors.red
-                              : const Color(0xFF999A96),
-                          backgroundColor: AppColors.border,
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          x[2] as String,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right),
-                ],
+          if (type != 'Kilometer') ...[
+            TextField(
+              controller: _title,
+              decoration: InputDecoration(
+                labelText: type == 'BBM'
+                    ? 'Jenis BBM / SPBU'
+                    : 'Nama aktivitas',
+                hintText: type == 'BBM'
+                    ? 'Contoh: Pertalite'
+                    : 'Contoh: Servis berkala',
               ),
             ),
+            const SizedBox(height: 12),
+          ],
+          TextField(
+            key: const ValueKey('log-value'),
+            controller: _value,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: type == 'Kilometer'
+                  ? 'Kilometer terbaru'
+                  : 'Biaya total (opsional)',
+              suffixText: type == 'Kilometer' ? 'km' : 'Rp',
+            ),
+          ),
+          if (type == 'BBM') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _volume,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Volume BBM (opsional)',
+                suffixText: 'liter',
+              ),
+            ),
+          ],
+          if (type != 'Kilometer') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _mileage,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Kilometer saat aktivitas (opsional)',
+                suffixText: 'km',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _notes,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Catatan tambahan (opsional)',
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text(
+            'Kendaraan: ${widget.state.vehicle.name}',
+            style: const TextStyle(color: AppColors.muted),
           ),
         ],
       ),
@@ -1969,6 +2896,13 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryState extends State<HistoryScreen> {
   int tab = 0;
+
+  List<num> _valuesForTab() => widget.state.logs.reversed
+      .map((log) => tab == 1 ? (log['mileage'] ?? log['value']) : log['amount'])
+      .whereType<num>()
+      .where((value) => value > 0)
+      .toList();
+
   @override
   Widget build(BuildContext context) => Page(
     title: 'Riwayat & Tracking',
@@ -1990,11 +2924,20 @@ class _HistoryState extends State<HistoryScreen> {
           ),
           const SizedBox(height: 18),
           if (tab == 0)
-            const ServiceTimeline()
+            ServiceTimeline(state: widget.state)
+          else if (_valuesForTab().length < 2)
+            CardBox(
+              child: Text(
+                _valuesForTab().isEmpty
+                    ? 'Belum ada cukup catatan untuk membuat grafik.'
+                    : 'Tambahkan satu catatan lagi untuk melihat tren.',
+                style: const TextStyle(color: AppColors.muted),
+              ),
+            )
           else
             ChartPanel(
               title: tab == 1 ? 'Tren jarak tempuh' : 'Pengeluaran perawatan',
-              cost: tab == 2,
+              values: _valuesForTab(),
             ),
         ],
       ),
@@ -2003,79 +2946,82 @@ class _HistoryState extends State<HistoryScreen> {
 }
 
 class ServiceTimeline extends StatelessWidget {
-  const ServiceTimeline({super.key});
+  final OtoKuState state;
+  const ServiceTimeline({super.key, required this.state});
+
   @override
-  Widget build(BuildContext context) => const Column(
-    children: [
-      TimelineGroup(
-        date: 'Hari ini',
-        mileage: '12.450 km',
-        today: true,
-        items: [
-          TimelineItem(
-            icon: Icons.local_gas_station_outlined,
-            title: 'Isi Pertalite',
-            detail: '8,2 L (Rp 6.100/L) · 12.450 km',
-            price: 'Rp 50.000',
+  Widget build(BuildContext context) {
+    if (state.logs.isEmpty) {
+      return const CardBox(
+        child: Text(
+          'Belum ada riwayat. Catatan yang kamu buat akan tersimpan di sini.',
+        ),
+      );
+    }
+    return Column(
+      children: state.logs.map((log) {
+        final type = (log['type'] ?? 'catatan').toString();
+        final amount = log['amount'];
+        final mileage = log['mileage'] ?? log['value'];
+        final notes = (log['notes'] ?? '').toString();
+        final date = DateTime.tryParse((log['date'] ?? '').toString());
+        final dateLabel = date == null
+            ? 'Tanggal tidak tersedia'
+            : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+        final volume = log['volume'];
+        final details = <String>[
+          if (volume is num) '${volume.toStringAsFixed(1)} L',
+          if (mileage is num) '${formatKilometers(mileage.toInt())} km',
+          if (amount is num && amount > 0)
+            'Rp ${formatKilometers(amount.toInt())}',
+          if (notes.isNotEmpty) notes,
+          if (log['source'] == 'manual') 'Dicatat manual',
+        ];
+        final icon = switch (type) {
+          'bbm' => Icons.local_gas_station_outlined,
+          'servis' => Icons.build_outlined,
+          'biaya' => Icons.payments_outlined,
+          'sparepart' => Icons.tire_repair_outlined,
+          _ => Icons.speed_outlined,
+        };
+        return CardBox(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: AppColors.red),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (log['title'] ?? 'Catatan').toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      dateLabel,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (details.isNotEmpty)
+                      Text(
+                        details.join(' · '),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          TimelineItem(
-            icon: Icons.build_outlined,
-            title: 'Servis Rutin',
-            detail: 'Ganti oli mesin · Cek filter udara · Cek CVT · 12.100 km',
-            price: 'Rp 80.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '10 Jul 2025',
-        mileage: '11.800 km',
-        items: [
-          TimelineItem(
-            icon: Icons.local_gas_station_outlined,
-            title: 'Isi Pertalite',
-            detail: '8,1 L (Rp 6.150/L) · 11.800 km',
-            price: 'Rp 50.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '15 Jun 2025',
-        mileage: '11.200 km',
-        items: [
-          TimelineItem(
-            icon: Icons.tire_repair_outlined,
-            title: 'Ganti Kampas Rem',
-            detail: '11.200 km',
-            price: 'Rp 120.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '20 Apr 2025',
-        mileage: '10.500 km',
-        items: [
-          TimelineItem(
-            icon: Icons.local_gas_station_outlined,
-            title: 'Isi Pertalite',
-            detail: '8,3 L (Rp 6.000/L) · 10.500 km',
-            price: 'Rp 50.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '12 Mar 2025',
-        mileage: '9.800 km',
-        items: [
-          TimelineItem(
-            icon: Icons.build_outlined,
-            title: 'Servis Rutin',
-            detail: 'Ganti oli mesin · Cek filter udara',
-            price: 'Rp 80.000',
-          ),
-        ],
-      ),
-    ],
-  );
+        );
+      }).toList(),
+    );
+  }
 }
 
 class TimelineGroup extends StatelessWidget {
@@ -2207,8 +3153,8 @@ class TimelineItem extends StatelessWidget {
 
 class ChartPanel extends StatelessWidget {
   final String title;
-  final bool cost;
-  const ChartPanel({super.key, required this.title, required this.cost});
+  final List<num> values;
+  const ChartPanel({super.key, required this.title, required this.values});
   @override
   Widget build(BuildContext c) => CardBox(
     child: Column(
@@ -2219,20 +3165,14 @@ class ChartPanel extends StatelessWidget {
         SizedBox(
           height: 180,
           child: CustomPaint(
-            painter: ChartPainter(cost: cost),
+            painter: ChartPainter(values: values),
             child: const SizedBox.expand(),
           ),
         ),
         const SizedBox(height: 10),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Text('Jun'),
-            Text('Jul'),
-            Text('Agu'),
-            Text('Sep'),
-            Text('Okt'),
-          ],
+        Text(
+          '${values.length} catatan lokal · data demo',
+          style: const TextStyle(color: AppColors.muted, fontSize: 11),
         ),
       ],
     ),
@@ -2240,8 +3180,8 @@ class ChartPanel extends StatelessWidget {
 }
 
 class ChartPainter extends CustomPainter {
-  final bool cost;
-  ChartPainter({required this.cost});
+  final List<num> values;
+  ChartPainter({required this.values});
   @override
   void paint(Canvas c, Size s) {
     final line = Paint()
@@ -2259,7 +3199,17 @@ class ChartPainter extends CustomPainter {
         grid,
       );
     }
-    final points = [.72, .55, .62, .3, .42];
+    final minValue = values.reduce(math.min).toDouble();
+    final maxValue = values.reduce(math.max).toDouble();
+    final points = values
+        .map(
+          (value) => maxValue == minValue
+              ? .5
+              : .88 -
+                    ((value.toDouble() - minValue) / (maxValue - minValue)) *
+                        .76,
+        )
+        .toList();
     final path = Path()..moveTo(10, s.height * points[0]);
     for (var i = 1; i < points.length; i++) {
       final x = 10 + (s.width - 20) * i / (points.length - 1);
@@ -2277,7 +3227,8 @@ class ChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant ChartPainter oldDelegate) =>
+      oldDelegate.values.toString() != values.toString();
 }
 
 class ObdScreen extends StatelessWidget {
@@ -2310,11 +3261,11 @@ class ObdScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'OBD Terhubung',
+                      'OBD Demo Aktif',
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     Text(
-                      'Terakhir update: 2 menit yang lalu',
+                      'Data simulasi lokal · bukan live',
                       style: TextStyle(color: AppColors.muted, fontSize: 12),
                     ),
                   ],
@@ -2342,7 +3293,7 @@ class ObdScreen extends StatelessWidget {
               Expanded(child: HealthItem('1 Kode Masalah', 'P0301', false)),
             ],
           ),
-          const SectionTitle('Kode Masalah (DTC)'),
+          const SectionTitle('Kode Masalah (Contoh Demo)'),
           CardBox(
             onTap: () => showRecommendation(c),
             child: const ListTile(
@@ -2352,7 +3303,9 @@ class ObdScreen extends StatelessWidget {
                 'P0301',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
-              subtitle: Text('Cylinder 1 Misfire Detected'),
+              subtitle: Text(
+                'Contoh P0301 · perlu diagnosis bengkel; tidak memastikan komponen rusak.',
+              ),
               trailing: StatusChip('Sedang', AppColors.amber),
             ),
           ),
@@ -2436,25 +3389,16 @@ class _CatalogState extends State<CatalogScreen> {
   String query = '', cat = 'Semua';
   @override
   Widget build(BuildContext c) {
-    final cats = [
-      'Semua',
-      'Sparepart',
-      'Oli & Cairan',
-      'Aksesori',
-      'Perangkat OBD',
-      'Rem',
-      'Filter',
-      'Aki',
-    ];
     final list = widget.state.products
         .where(
           (p) =>
               (cat == 'Semua' ||
                   p.category == cat ||
-                  (cat == 'Sparepart' &&
-                      !['Aksesori', 'Perangkat OBD'].contains(p.category))) &&
+                  (cat == 'Sparepart' && p.category != 'Aksesori')) &&
               (query.isEmpty ||
-                  p.name.toLowerCase().contains(query.toLowerCase())),
+                  '${p.name} ${p.category}'.toLowerCase().contains(
+                    query.toLowerCase().trim(),
+                  )),
         )
         .toList();
     return SafeArea(
@@ -2467,7 +3411,11 @@ class _CatalogState extends State<CatalogScreen> {
                 children: [
                   const Text(
                     'Shop',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.5,
+                    ),
                   ),
                   const Spacer(),
                   if (widget.state.cart.isNotEmpty)
@@ -2491,7 +3439,10 @@ class _CatalogState extends State<CatalogScreen> {
                   onChanged: (x) => setState(() => query = x),
                   decoration: InputDecoration(
                     hintText: 'Cari produk...',
-                    prefixIcon: const Icon(Icons.search),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: AppColors.muted,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -2501,22 +3452,6 @@ class _CatalogState extends State<CatalogScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: cats
-                        .map(
-                          (x) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: GestureDetector(
-                              onTap: () => setState(() => cat = x),
-                              child: Pill(x, active: cat == x),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
                 const SizedBox(height: 18),
                 const Text(
                   'Kategori',
@@ -2532,27 +3467,17 @@ class _CatalogState extends State<CatalogScreen> {
                   crossAxisSpacing: 8,
                   children:
                       [
+                            ['Sparepart', Icons.two_wheeler],
                             ['Oli & Cairan', Icons.oil_barrel_outlined],
                             ['Rem', Icons.disc_full],
                             ['Filter', Icons.filter_alt_outlined],
                             ['Aki', Icons.battery_full],
-                            ['Lampu', Icons.lightbulb_outline],
-                            ['Body Part', Icons.two_wheeler],
-                            ['CVT', Icons.settings_outlined],
-                            ['Lainnya', Icons.more_horiz],
+                            ['Aksesori', Icons.lightbulb_outline],
+                            ['Semua', Icons.grid_view_outlined],
                           ]
                           .map(
                             (x) => InkWell(
-                              onTap: () => setState(
-                                () => cat =
-                                    [
-                                      'Body Part',
-                                      'CVT',
-                                      'Lainnya',
-                                    ].contains(x[0])
-                                    ? 'Semua'
-                                    : x[0] as String,
-                              ),
+                              onTap: () => setState(() => cat = x[0] as String),
                               borderRadius: BorderRadius.circular(12),
                               child: Column(
                                 children: [
@@ -2560,24 +3485,35 @@ class _CatalogState extends State<CatalogScreen> {
                                     width: 52,
                                     height: 52,
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: cat == x[0]
+                                          ? AppColors.redTint
+                                          : Colors.white,
                                       border: Border.all(
-                                        color: AppColors.border,
+                                        color: cat == x[0]
+                                            ? AppColors.red
+                                            : AppColors.border,
                                       ),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Icon(
                                       x[1] as IconData,
-                                      color: AppColors.ink,
+                                      color: cat == x[0]
+                                          ? AppColors.red
+                                          : AppColors.ink,
                                     ),
                                   ),
                                   const SizedBox(height: 5),
                                   Text(
                                     x[0] as String,
                                     textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      color: AppColors.muted,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: cat == x[0]
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: cat == x[0]
+                                          ? AppColors.red
+                                          : AppColors.muted,
                                     ),
                                   ),
                                 ],
@@ -2587,26 +3523,64 @@ class _CatalogState extends State<CatalogScreen> {
                           .toList(),
                 ),
                 SectionTitle(
-                  'Produk untuk kendaraan aktif',
-                  action: 'Lihat semua',
+                  'Produk (${list.length})',
+                  action: query.isNotEmpty || cat != 'Semua'
+                      ? 'Hapus filter'
+                      : null,
+                  onTap: () => setState(() {
+                    query = '';
+                    cat = 'Semua';
+                  }),
                 ),
                 const Text(
-                  'Kecocokan hanya ditandai jika sudah dikonfirmasi.',
+                  'Kecocokan ditampilkan jika sudah dikonfirmasi untuk kendaraan aktif.',
                   style: TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 10),
-                ...list.map(
-                  (p) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: ProductCard(
-                      p: p,
-                      onTap: () => push(
-                        c,
-                        ProductDetailScreen(state: widget.state, product: p),
+                if (list.isEmpty)
+                  CardBox(
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.search_off_outlined,
+                          size: 34,
+                          color: AppColors.muted,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Produk tidak ditemukan',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Coba kata kunci atau kategori lain.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.muted),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            query = '';
+                            cat = 'Semua';
+                          }),
+                          child: const Text('Tampilkan semua produk'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...list.map(
+                    (p) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: ProductCard(
+                        p: p,
+                        vehicleName: widget.state.vehicle.name,
+                        onTap: () => push(
+                          c,
+                          ProductDetailScreen(state: widget.state, product: p),
+                        ),
                       ),
                     ),
                   ),
-                ),
               ]),
             ),
           ),
@@ -2618,14 +3592,20 @@ class _CatalogState extends State<CatalogScreen> {
 
 class ProductCard extends StatelessWidget {
   final Product p;
+  final String vehicleName;
   final VoidCallback onTap;
-  const ProductCard({super.key, required this.p, required this.onTap});
+  const ProductCard({
+    super.key,
+    required this.p,
+    required this.vehicleName,
+    required this.onTap,
+  });
   @override
   Widget build(BuildContext c) => CardBox(
     onTap: onTap,
     child: Row(
       children: [
-        ProductArt(icon: p.icon),
+        ProductArt(icon: p.icon, image: p.imageAsset),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -2634,7 +3614,7 @@ class ProductCard extends StatelessWidget {
               Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800)),
               Text(
                 switch (p.fitment) {
-                  ProductFitment.confirmed => 'Cocok untuk Honda Beat 2021',
+                  ProductFitment.confirmed => 'Cocok untuk $vehicleName',
                   ProductFitment.possibleUnverified =>
                     'Kecocokan belum diverifikasi',
                   ProductFitment.incompatible =>
@@ -2658,6 +3638,10 @@ class ProductCard extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
+              const Text(
+                'Stok belum dikonfirmasi · demo',
+                style: TextStyle(color: AppColors.muted, fontSize: 10),
+              ),
             ],
           ),
         ),
@@ -2669,7 +3653,8 @@ class ProductCard extends StatelessWidget {
 
 class ProductArt extends StatelessWidget {
   final String icon;
-  const ProductArt({super.key, required this.icon});
+  final String? image;
+  const ProductArt({super.key, required this.icon, this.image});
   @override
   Widget build(BuildContext c) => Container(
     width: 68,
@@ -2678,7 +3663,18 @@ class ProductArt extends StatelessWidget {
       color: const Color(0xFFF2F1ED),
       borderRadius: BorderRadius.circular(14),
     ),
-    child: CustomPaint(painter: PartPainter(icon)),
+    child: image == null || image!.isEmpty
+        ? CustomPaint(painter: PartPainter(icon))
+        : Padding(
+            padding: const EdgeInsets.all(5),
+            child: Image.asset(
+              image!,
+              fit: BoxFit.contain,
+              semanticLabel: 'Foto produk ilustrasi',
+              errorBuilder: (_, _, _) =>
+                  CustomPaint(painter: PartPainter(icon)),
+            ),
+          ),
   );
 }
 
@@ -2908,15 +3904,12 @@ class ProductDetailScreen extends StatelessWidget {
                             color: const Color(0xFFECEDEA),
                             borderRadius: BorderRadius.circular(18),
                           ),
-                          child: Center(
-                            child: Icon(
-                              product.icon == 'brake'
-                                  ? Icons.disc_full
-                                  : product.icon == 'oil'
-                                  ? Icons.oil_barrel_outlined
-                                  : Icons.build_circle_outlined,
-                              size: 116,
-                              color: const Color(0xFF454743),
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Image.asset(
+                              product.imageAsset,
+                              fit: BoxFit.contain,
+                              semanticLabel: 'Foto ilustrasi ${product.name}',
                             ),
                           ),
                         ),
@@ -2928,44 +3921,7 @@ class ProductDetailScreen extends StatelessWidget {
                             onTap: () => Navigator.pop(c),
                           ),
                         ),
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: CircleIconButton(
-                            icon: Icons.favorite_border,
-                            onTap: () {},
-                          ),
-                        ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: List.generate(
-                      5,
-                      (i) => Expanded(
-                        child: Container(
-                          height: 48,
-                          margin: EdgeInsets.only(right: i == 4 ? 0 : 7),
-                          decoration: BoxDecoration(
-                            color: i == 0
-                                ? const Color(0xFFECEDEA)
-                                : Colors.white,
-                            border: Border.all(
-                              color: i == 0 ? AppColors.ink : AppColors.border,
-                              width: i == 0 ? 1.5 : 1,
-                            ),
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                          child: Icon(
-                            product.icon == 'brake'
-                                ? Icons.disc_full
-                                : Icons.build,
-                            size: 22,
-                            color: AppColors.muted,
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -2976,16 +3932,11 @@ class ProductDetailScreen extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const Text(
-                    'Honda Beat · Honda Genuine Parts',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '★ 4.8 (120 ulasan)',
-                    style: TextStyle(
-                      color: AppColors.amber,
-                      fontWeight: FontWeight.w700,
+                  Text(
+                    '${product.category} · Foto ilustrasi katalog',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 13,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -3000,8 +3951,7 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      if (product.fitment == ProductFitment.confirmed)
-                        const StatusChip('Stok tersedia', AppColors.green),
+                      const StatusChip('Data katalog demo', AppColors.muted),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -3026,26 +3976,12 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (product.fitment == ProductFitment.confirmed)
-                    const Column(
-                      children: [
-                        FeatureRow(
-                          icon: Icons.verified_outlined,
-                          title: '100% Original',
-                          subtitle: 'Garansi resmi',
-                        ),
-                        FeatureRow(
-                          icon: Icons.build_outlined,
-                          title: 'Bisa pasang di bengkel',
-                          subtitle: 'Rekomendasi OtoKu',
-                        ),
-                        FeatureRow(
-                          icon: Icons.local_shipping_outlined,
-                          title: 'Pengiriman cepat',
-                          subtitle: '1–2 hari',
-                        ),
-                      ],
+                  const CardBox(
+                    child: Text(
+                      'Produk dan harga ini data demo lokal. Stok, penjual, dan ketentuan pemasangan belum dikonfirmasi.',
+                      style: TextStyle(color: AppColors.muted, height: 1.4),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -3137,35 +4073,51 @@ class FeatureRow extends StatelessWidget {
   );
 }
 
-class WorkshopListScreen extends StatelessWidget {
+class WorkshopListScreen extends StatefulWidget {
   final OtoKuState state;
   const WorkshopListScreen({super.key, required this.state});
+  @override
+  State<WorkshopListScreen> createState() => _WorkshopListScreenState();
+}
+
+class _WorkshopListScreenState extends State<WorkshopListScreen> {
+  String category = 'Semua';
+  String query = '';
+
+  List<Workshop> get filtered => widget.state.workshops.where((place) {
+    final matchesCategory = switch (category) {
+      'Semua' => true,
+      'Bengkel partner' => place.category == 'Bengkel' && place.partner,
+      'Bengkel non-partner' => place.category == 'Bengkel' && !place.partner,
+      _ => place.category == category,
+    };
+    final search =
+        '${place.name} ${place.category} ${place.address} ${place.services}'
+            .toLowerCase();
+    return matchesCategory && search.contains(query.toLowerCase().trim());
+  }).toList();
+
   @override
   Widget build(BuildContext c) => SafeArea(
     child: ListView(
       padding: const EdgeInsets.all(16),
       children: [
         const Text(
-          'Peta',
+          'Peta & Tempat',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 4),
         const Text(
-          'Demo area Bekasi Utara • data tempat contoh',
+          'Bekasi Utara · data lokasi ilustrasi',
           style: TextStyle(color: AppColors.muted),
         ),
         const SizedBox(height: 12),
-        const CardBox(
-          color: Color(0xFFFFF7E6),
-          child: Text(
-            'Peta dan lokasi langsung belum terhubung. Cari berdasarkan area untuk melihat data demo.',
-            style: TextStyle(fontSize: 12),
-          ),
-        ),
-        const SizedBox(height: 8),
+        const DemoMapPreview(),
+        const SizedBox(height: 10),
         TextField(
+          onChanged: (value) => setState(() => query = value),
           decoration: InputDecoration(
-            hintText: 'Cari tempat atau area...',
+            hintText: 'Cari bengkel, SPBU, minimarket...',
             prefixIcon: const Icon(Icons.search),
             filled: true,
             fillColor: Colors.white,
@@ -3175,29 +4127,138 @@ class WorkshopListScreen extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 14),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Pill('Semua', active: true),
-            Pill('Terdekat'),
-            Pill('Terbaik'),
-          ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children:
+              [
+                    'Semua',
+                    'Bengkel partner',
+                    'Bengkel non-partner',
+                    'Minimarket',
+                    'SPBU',
+                  ]
+                  .map(
+                    (value) => ChoiceChip(
+                      label: Text(value),
+                      selected: category == value,
+                      onSelected: (_) => setState(() => category = value),
+                    ),
+                  )
+                  .toList(),
         ),
-        const SizedBox(height: 16),
-        ...state.workshops.map(
-          (w) => Padding(
+        const SizedBox(height: 12),
+        Text(
+          '${filtered.length} tempat',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        if (filtered.isEmpty)
+          const CardBox(
+            child: Text('Tempat tidak ditemukan. Coba filter lain.'),
+          ),
+        ...filtered.map(
+          (place) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: WorkshopCard(
-              w: w,
-              onTap: () =>
-                  push(c, WorkshopDetailScreen(state: state, workshop: w)),
+              w: place,
+              onTap: () => push(
+                c,
+                WorkshopDetailScreen(state: widget.state, workshop: place),
+              ),
             ),
           ),
         ),
       ],
     ),
   );
+}
+
+class DemoMapPreview extends StatelessWidget {
+  const DemoMapPreview({super.key});
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 156,
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: const Color(0xFFE7EBDD),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: AppColors.border),
+    ),
+    child: Stack(
+      children: [
+        const Positioned.fill(child: CustomPaint(painter: DemoRoadPainter())),
+        const Positioned(
+          left: 40,
+          top: 40,
+          child: Icon(Icons.location_on, color: AppColors.red, size: 32),
+        ),
+        const Positioned(
+          right: 54,
+          top: 72,
+          child: Icon(Icons.location_on, color: AppColors.ink, size: 28),
+        ),
+        const Positioned(
+          left: 174,
+          top: 26,
+          child: Icon(Icons.location_on, color: AppColors.ink, size: 26),
+        ),
+        Positioned(
+          left: 10,
+          bottom: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Pratinjau OpenStreetMap · data demo',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class DemoRoadPainter extends CustomPainter {
+  const DemoRoadPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final road = Paint()
+      ..color = const Color(0xFFF8F5E9)
+      ..strokeWidth = 14
+      ..strokeCap = StrokeCap.round;
+    final thinRoad = Paint()
+      ..color = const Color(0xFFD5DCCB)
+      ..strokeWidth = 3;
+    canvas.drawLine(
+      Offset(-12, size.height * .72),
+      Offset(size.width * .95, size.height * .18),
+      road,
+    );
+    canvas.drawLine(
+      Offset(size.width * .25, -12),
+      Offset(size.width * .52, size.height + 12),
+      road,
+    );
+    canvas.drawLine(
+      Offset(size.width * .78, -12),
+      Offset(size.width * .68, size.height + 12),
+      thinRoad,
+    );
+    canvas.drawLine(
+      Offset(-12, size.height * .3),
+      Offset(size.width + 12, size.height * .83),
+      thinRoad,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant DemoRoadPainter oldDelegate) => false;
 }
 
 class WorkshopCard extends StatelessWidget {
@@ -3229,17 +4290,22 @@ class WorkshopCard extends StatelessWidget {
             children: [
               Text(w.name, style: const TextStyle(fontWeight: FontWeight.w800)),
               Text(
-                '★ ${w.rating}  ·  ${w.distance}',
+                '${w.category} · ${w.distance}',
                 style: const TextStyle(
-                  color: AppColors.amber,
-                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
               ),
               const SizedBox(height: 5),
-              const Text(
-                'Bengkel demo • belum diverifikasi',
-                style: TextStyle(color: AppColors.muted, fontSize: 12),
+              Text(
+                w.partner
+                    ? 'Partner OtoKu · demo'
+                    : 'Lokasi demo · belum diverifikasi',
+                style: TextStyle(
+                  color: w.partner ? AppColors.green : AppColors.muted,
+                  fontSize: 12,
+                ),
               ),
               Text(
                 w.services,
@@ -3263,19 +4329,23 @@ class WorkshopDetailScreen extends StatelessWidget {
   });
   @override
   Widget build(BuildContext c) => Page(
-    title: 'Detail Bengkel',
-    bottomBar: SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: FilledButton(
-          onPressed: () =>
-              push(c, BookingScreen(state: state, workshop: workshop)),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          child: const Text('Booking demo'),
-        ),
-      ),
-    ),
+    title: 'Detail Tempat',
+    bottomBar: workshop.bookingEnabled
+        ? SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton(
+                onPressed: () =>
+                    push(c, BookingScreen(state: state, workshop: workshop)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                child: const Text('Booking partner demo'),
+              ),
+            ),
+          )
+        : null,
     child: ScrollPage(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3299,28 +4369,27 @@ class WorkshopDetailScreen extends StatelessWidget {
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
           Text(
-            '★ ${workshop.rating} · ${workshop.distance}',
-            style: const TextStyle(
-              color: AppColors.amber,
-              fontWeight: FontWeight.w700,
-            ),
+            '${workshop.category} · ${workshop.distance}',
+            style: const TextStyle(color: AppColors.muted),
           ),
           const SizedBox(height: 10),
-          const Text(
-            'Bengkel demo • jam operasional belum diverifikasi',
-            style: TextStyle(color: AppColors.muted),
+          Text(
+            workshop.partner
+                ? 'Partner OtoKu demo · lokasi dan layanan belum diverifikasi'
+                : 'Lokasi demo · alamat dan jam operasional belum diverifikasi',
+            style: const TextStyle(color: AppColors.muted),
           ),
-          const SizedBox(height: 12),
-          const Row(
-            children: [
-              OutlinedButton(onPressed: null, child: Text('Rute')),
-              OutlinedButton(onPressed: null, child: Text('Hubungi')),
-              OutlinedButton(onPressed: null, child: Text('Simpan')),
-            ],
+          const SizedBox(height: 6),
+          Text(
+            workshop.address,
+            style: const TextStyle(color: AppColors.muted),
           ),
-          const SectionTitle('Layanan populer'),
-          ServiceRow('Ganti Oli Mesin', 'Rp 50.000', '30 menit'),
-          ServiceRow('Servis CVT', 'Rp 80.000', '45 menit'),
+          if (workshop.category == 'Bengkel') ...[
+            const SectionTitle('Layanan contoh'),
+            const CardBox(
+              child: Text('Daftar layanan dan tarif belum dikonfirmasi.'),
+            ),
+          ],
         ],
       ),
     ),
@@ -3406,8 +4475,79 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingState extends State<BookingScreen> {
-  int day = 1, time = 2;
-  bool oilSelected = true, cvtSelected = false;
+  static const times = [
+    '08:00',
+    '09:00',
+    '10:00',
+    '11:00',
+    '13:00',
+    '14:00',
+    '15:00',
+    '16:00',
+  ];
+  static const weekdays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+  static const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mei',
+    'Jun',
+    'Jul',
+    'Agu',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Des',
+  ];
+  final _notes = TextEditingController();
+  int day = 0, time = 2;
+  bool oilSelected = true, cvtSelected = false, submitting = false;
+
+  DateTime get selectedDate => DateTime.now().add(Duration(days: day + 1));
+  String _dateLabel(DateTime date) =>
+      '${weekdays[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (submitting) return;
+    final services = <String>[
+      if (oilSelected) 'Ganti Oli Mesin',
+      if (cvtSelected) 'Servis CVT',
+    ];
+    if (services.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pilih minimal satu layanan.')),
+      );
+      return;
+    }
+    setState(() => submitting = true);
+    try {
+      final booking = await widget.state.addBooking(
+        widget.workshop.name,
+        services: services,
+        date: selectedDate,
+        time: times[time],
+        notes: _notes.text,
+      );
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              BookingConfirmationScreen(state: widget.state, booking: booking),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext c) => Page(
     title: 'Booking Layanan',
@@ -3416,12 +4556,9 @@ class _BookingState extends State<BookingScreen> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: FilledButton(
-          onPressed: () {
-            widget.state.addBooking(widget.workshop.name);
-            Navigator.popUntil(c, (r) => r.isFirst);
-          },
+          onPressed: submitting ? null : _submit,
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          child: const Text('Lanjutkan'),
+          child: Text(submitting ? 'Menyimpan...' : 'Lanjutkan'),
         ),
       ),
     ),
@@ -3430,96 +4567,73 @@ class _BookingState extends State<BookingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CardBox(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.storefront_outlined, size: 40),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.workshop.name,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const Text(
-                      'Bekasi Utara',
-                      style: TextStyle(color: AppColors.muted),
-                    ),
-                  ],
+                Text(
+                  widget.workshop.name,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  widget.workshop.address,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Kendaraan: ${widget.state.vehicle.name} · ${widget.state.vehicle.plate}',
+                  style: const TextStyle(fontSize: 12),
                 ),
               ],
             ),
           ),
           const SectionTitle('Pilih Layanan'),
           BookingServiceTile(
+            key: const ValueKey('booking-oil'),
             title: 'Ganti Oli Mesin',
-            price: 'Rp 50.000',
-            duration: '30 menit',
+            price: 'Estimasi demo Rp 50.000',
+            duration: '30 menit (demo)',
             selected: oilSelected,
             onTap: () => setState(() => oilSelected = !oilSelected),
           ),
           BookingServiceTile(
             title: 'Servis CVT',
-            price: 'Rp 80.000',
-            duration: '45 menit',
+            price: 'Estimasi demo Rp 80.000',
+            duration: '45 menit (demo)',
             selected: cvtSelected,
             onTap: () => setState(() => cvtSelected = !cvtSelected),
           ),
-          const SectionTitle('Pilih Tanggal'),
-          Wrap(
-            spacing: 8,
-            children: List.generate(
-              5,
-              (i) => GestureDetector(
-                onTap: () => setState(() => day = i),
-                child: Pill(
-                  [
-                    'Sen 22 Sep',
-                    'Sel 23 Sep',
-                    'Rab 24 Sep',
-                    'Kam 25 Sep',
-                    'Jum 26 Sep',
-                  ][i],
-                  active: day == i,
-                ),
-              ),
-            ),
-          ),
-          const SectionTitle('Pilih Waktu'),
+          const SectionTitle('Pilih Tanggal · jadwal demo'),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children:
-                [
-                  '08:00',
-                  '09:00',
-                  '10:00',
-                  '11:00',
-                  '13:00',
-                  '14:00',
-                  '15:00',
-                  '16:00',
-                ].map((x) {
-                  final i = [
-                    '08:00',
-                    '09:00',
-                    '10:00',
-                    '11:00',
-                    '13:00',
-                    '14:00',
-                    '15:00',
-                    '16:00',
-                  ].indexOf(x);
-                  return GestureDetector(
-                    onTap: () => setState(() => time = i),
-                    child: Pill(x, active: time == i),
-                  );
-                }).toList(),
+            children: List.generate(5, (i) {
+              final date = DateTime.now().add(Duration(days: i + 1));
+              return GestureDetector(
+                onTap: () => setState(() => day = i),
+                child: Pill(_dateLabel(date), active: day == i),
+              );
+            }),
+          ),
+          const SectionTitle('Pilih Waktu · slot belum dikonfirmasi bengkel'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: times
+                .asMap()
+                .entries
+                .map(
+                  (entry) => GestureDetector(
+                    onTap: () => setState(() => time = entry.key),
+                    child: Pill(entry.value, active: time == entry.key),
+                  ),
+                )
+                .toList(),
           ),
           const SectionTitle('Catatan (opsional)'),
-          const TextField(
+          TextField(
+            controller: _notes,
             maxLines: 3,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: 'Contoh: minta dicek bagian lain juga',
               filled: true,
               fillColor: Colors.white,
@@ -3532,40 +4646,161 @@ class _BookingState extends State<BookingScreen> {
   );
 }
 
-class OrdersScreen extends StatelessWidget {
+class BookingConfirmationScreen extends StatelessWidget {
+  final OtoKuState state;
+  final String booking;
+  const BookingConfirmationScreen({
+    super.key,
+    required this.state,
+    required this.booking,
+  });
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Permintaan Booking',
+    child: ScrollPage(
+      child: Column(
+        children: [
+          CardBox(
+            color: AppColors.amberTint,
+            child: const Column(
+              children: [
+                Icon(Icons.schedule, color: AppColors.amber, size: 44),
+                SizedBox(height: 10),
+                Text(
+                  'Menunggu konfirmasi bengkel',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Permintaan tersimpan lokal. Jadwal belum dikonfirmasi dan pembayaran belum dilakukan.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          CardBox(child: Text(booking)),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: () => push(context, OrdersScreen(state: state)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
+            child: const Text('Lihat Pesanan'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () =>
+                Navigator.popUntil(context, (route) => route.isFirst),
+            child: const Text('Kembali ke Home'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class OrdersScreen extends StatefulWidget {
   final OtoKuState state;
   const OrdersScreen({super.key, required this.state});
   @override
-  Widget build(BuildContext c) => SafeArea(
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'Pesanan Saya',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 18),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+  State<OrdersScreen> createState() => _OrdersScreenState();
+}
+
+class _OrdersScreenState extends State<OrdersScreen> {
+  String filter = 'Semua';
+
+  @override
+  Widget build(BuildContext context) {
+    final orders = widget.state.orders.where((order) {
+      if (filter == 'Sparepart') return order.startsWith('#SP');
+      if (filter == 'Layanan') return order.startsWith('#SV');
+      return true;
+    }).toList();
+    return ColoredBox(
+      color: AppColors.bg,
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
           children: [
-            Pill('Sparepart', selectedTint: true),
-            Pill('Layanan'),
-            Pill('Semua'),
+            const Text(
+              'Pesanan Saya',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${orders.length} pesanan',
+              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'Semua', label: Text('Semua')),
+                ButtonSegment(value: 'Sparepart', label: Text('Sparepart')),
+                ButtonSegment(value: 'Layanan', label: Text('Layanan')),
+              ],
+              selected: {filter},
+              onSelectionChanged: (selection) =>
+                  setState(() => filter = selection.first),
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                backgroundColor: AppColors.surfaceLow,
+                foregroundColor: AppColors.muted,
+                selectedBackgroundColor: AppColors.red,
+                selectedForegroundColor: Colors.white,
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (orders.isEmpty)
+              CardBox(
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.receipt_long_outlined,
+                      size: 36,
+                      color: AppColors.muted,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      filter == 'Semua'
+                          ? 'Belum ada pesanan'
+                          : 'Belum ada pesanan $filter',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Pesanan dan booking kamu akan muncul di sini.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...orders.map(
+                (order) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: OrderCard(
+                    order: order,
+                    onTap: () => push(context, OrderDetailScreen(order: order)),
+                  ),
+                ),
+              ),
           ],
         ),
-        const SizedBox(height: 16),
-        ...state.orders.map(
-          (x) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: OrderCard(
-              order: x,
-              onTap: () => push(c, OrderDetailScreen(order: x)),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class OrderCard extends StatelessWidget {
@@ -3582,9 +4817,18 @@ class OrderCard extends StatelessWidget {
         'Selesai',
         'Pesanan Selesai',
         'Dibatalkan',
+        'Menunggu pembayaran',
+        'Menunggu konfirmasi',
       ].contains(x),
-      orElse: () => 'Diproses',
+      orElse: () => 'Status tidak diketahui',
     );
+    final normalizedStatus = status == 'Pesanan Selesai' ? 'Selesai' : status;
+    final details = fields.length > 2
+        ? fields
+              .sublist(2, fields.length - 1)
+              .where((field) => field != status)
+              .join(' · ')
+        : '';
     final date = fields.length > 1 ? fields.last : '';
     return CardBox(
       onTap: onTap,
@@ -3604,15 +4848,25 @@ class OrderCard extends StatelessWidget {
                         fields.first,
                         style: const TextStyle(
                           color: AppColors.muted,
-                          fontSize: 10,
+                          fontSize: 12,
                         ),
                       ),
                     ),
                     StatusChip(
-                      status,
-                      status == 'Diproses' || status == 'Dikirim'
+                      normalizedStatus,
+                      normalizedStatus == 'Diproses' ||
+                              normalizedStatus == 'Dikirim' ||
+                              normalizedStatus.startsWith('Menunggu')
                           ? AppColors.amber
+                          : normalizedStatus == 'Dibatalkan'
+                          ? AppColors.muted
                           : AppColors.green,
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: AppColors.muted,
                     ),
                   ],
                 ),
@@ -3621,25 +4875,23 @@ class OrderCard extends StatelessWidget {
                   fields.length > 1 ? fields[1] : order,
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 13,
+                    fontSize: 14,
                   ),
                 ),
-                if (fields.length > 2)
+                if (details.isNotEmpty)
                   Text(
-                    fields.sublist(2, fields.length - 1).join(' · '),
+                    details,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.muted,
-                      fontSize: 10,
+                      fontSize: 12,
                     ),
                   ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    date,
-                    style: const TextStyle(color: AppColors.muted, fontSize: 9),
-                  ),
+                const SizedBox(height: 8),
+                Text(
+                  date,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
                 ),
               ],
             ),
@@ -3665,30 +4917,10 @@ class OrderDetailScreen extends StatelessWidget {
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 16),
-          const CardBox(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.check_circle, color: AppColors.green),
-                  title: Text('Pesanan dibuat'),
-                  subtitle: Text('Berhasil dibuat'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.inventory_2_outlined),
-                  title: Text('Sedang dikemas'),
-                  subtitle: Text('Pesanan sedang diproses'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.local_shipping_outlined),
-                  title: Text('Dikirim'),
-                  subtitle: Text('Menunggu proses pengiriman'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.home_outlined),
-                  title: Text('Selesai'),
-                  subtitle: Text('Belum selesai'),
-                ),
-              ],
+          CardBox(
+            child: Text(
+              'Status: ${order.split(' • ').firstWhere((field) => ['Menunggu pembayaran', 'Menunggu konfirmasi', 'Diproses', 'Dikirim', 'Selesai', 'Dibatalkan'].contains(field), orElse: () => 'Belum diketahui')}\nStatus demo lokal; belum ada konfirmasi pembayaran, penjual, atau bengkel.',
+              style: const TextStyle(height: 1.5),
             ),
           ),
           const SectionTitle('Ringkasan'),
@@ -3701,7 +4933,7 @@ class OrderDetailScreen extends StatelessWidget {
           const SectionTitle('Pembayaran'),
           const CardBox(
             child: Text(
-              'Pembayaran mock\nTotal mengikuti ringkasan pesanan',
+              'Belum ada pembayaran. Integrasi pembayaran belum tersedia.',
               style: TextStyle(height: 1.6),
             ),
           ),
@@ -3711,168 +4943,347 @@ class OrderDetailScreen extends StatelessWidget {
   );
 }
 
-class AccountScreen extends StatelessWidget {
-  final OtoKuState state;
-  const AccountScreen({super.key, required this.state});
-  @override
-  Widget build(BuildContext c) => SafeArea(
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            const Text(
-              'Akun Saya',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-            ),
-            const Spacer(),
-            IconButton(
-              onPressed: () {},
-              tooltip: 'Pengaturan akun',
-              icon: const Icon(Icons.settings_outlined),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        const CardBox(
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: Color(0xFFE8E8E8),
-                child: Text(
-                  'AB',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Agus Budiyanto',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    'agus.budiyanto@email.com',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                  Text(
-                    'Lihat Profil ›',
-                    style: TextStyle(color: AppColors.red, fontSize: 12),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        ...[
-          'Kendaraan Saya',
-          'Pesanan Saya',
-          'Booking Layanan',
-          'Alamat Saya',
-          'Metode Pembayaran',
-          'Voucher & Promo',
-          'Pusat Bantuan',
-          'Tentang OtoKu',
-        ].map(
-          (x) => CardBox(
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(x),
-              trailing: const Icon(Icons.chevron_right),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        const CardBox(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.logout, color: AppColors.red),
-            title: Text(
-              'Logout',
-              style: TextStyle(
-                color: AppColors.red,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
+void showPrototypeNotice(BuildContext context, String title, String message) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
         ),
       ],
     ),
   );
 }
 
-class CheckoutScreen extends StatelessWidget {
+class AccountScreen extends StatelessWidget {
   final OtoKuState state;
-  const CheckoutScreen({super.key, required this.state});
+  const AccountScreen({super.key, required this.state});
+
   @override
-  Widget build(BuildContext c) => Page(
-    title: 'Checkout',
-    child: ScrollPage(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext c) {
+    final actions = <({String title, IconData icon, VoidCallback onTap})>[
+      (
+        title: 'Kendaraan Saya',
+        icon: Icons.two_wheeler,
+        onTap: () => push(c, VehicleDetailScreen(state: state)),
+      ),
+      (
+        title: 'Pesanan Saya',
+        icon: Icons.receipt_long_outlined,
+        onTap: () => push(c, OrdersScreen(state: state)),
+      ),
+      (
+        title: 'Booking Layanan',
+        icon: Icons.event_note,
+        onTap: () => push(c, OrdersScreen(state: state)),
+      ),
+      (
+        title: 'Alamat Saya',
+        icon: Icons.location_on_outlined,
+        onTap: () => showPrototypeNotice(
+          c,
+          'Alamat Saya',
+          'Alamat belum disimpan. Checkout demo tidak melakukan pengiriman.',
+        ),
+      ),
+      (
+        title: 'Metode Pembayaran',
+        icon: Icons.account_balance_wallet_outlined,
+        onTap: () => showPrototypeNotice(
+          c,
+          'Metode Pembayaran',
+          'Tidak ada data pembayaran yang disimpan atau diproses dalam prototipe.',
+        ),
+      ),
+      (
+        title: 'Pusat Bantuan',
+        icon: Icons.help_outline,
+        onTap: () => showPrototypeNotice(
+          c,
+          'Pusat Bantuan',
+          'Dukungan akun akan tersedia setelah layanan backend dikonfigurasi.',
+        ),
+      ),
+      (
+        title: 'Tentang OtoKu',
+        icon: Icons.info_outline,
+        onTap: () => showPrototypeNotice(
+          c,
+          'Tentang OtoKu',
+          'Prototipe lokal. Data demo diberi label dan disimpan pada perangkat.',
+        ),
+      ),
+    ];
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'Ringkasan pesanan',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            'Akun Saya',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          CardBox(
+            onTap: () => showPrototypeNotice(
+              c,
+              'Profil Lokal',
+              'Autentikasi belum tersedia. Data kendaraan dan catatan tersimpan lokal.',
+            ),
+            child: const Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Color(0xFFE8E8E8),
+                  child: Icon(Icons.person_outline, color: AppColors.ink),
+                ),
+                SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mode prototipe lokal',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        'Belum masuk akun',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12),
+                      ),
+                      Text(
+                        'Data tersimpan di perangkat ini',
+                        style: TextStyle(color: AppColors.red, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
-          ...state.cart.map(
-            (p) => CardBox(
+          ...actions.map(
+            (action) => CardBox(
+              onTap: action.onTap,
               child: Row(
                 children: [
-                  ProductArt(icon: p.icon),
+                  Icon(action.icon, color: AppColors.red),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      p.name,
+                      action.title,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
-                  Text(
-                    p.price,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                  const Icon(Icons.chevron_right, color: AppColors.muted),
                 ],
               ),
             ),
           ),
-          const SectionTitle('Alamat pengiriman'),
-          const CardBox(
-            child: Text(
-              'Agus Budiyanto\nBekasi Utara\nAlamat mock untuk prototype',
-              style: TextStyle(height: 1.5),
-            ),
+        ],
+      ),
+    );
+  }
+}
+
+class CheckoutScreen extends StatelessWidget {
+  final OtoKuState state;
+  const CheckoutScreen({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: state,
+    builder: (context, _) {
+      final items = state.products
+          .where((product) => state.quantityOf(product) > 0)
+          .toList();
+      return Page(
+        title: 'Keranjang & Checkout',
+        child: ScrollPage(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ringkasan pesanan',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              if (items.isEmpty)
+                const CardBox(
+                  child: Text('Keranjang kosong. Tambahkan produk dari Shop.'),
+                ),
+              ...items.map(
+                (product) => CardBox(
+                  child: Row(
+                    children: [
+                      ProductArt(icon: product.icon, image: product.imageAsset),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              product.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              product.price,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                IconButton(
+                                  tooltip: 'Kurangi jumlah',
+                                  onPressed: () => state.removeOne(product),
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                ),
+                                Text(
+                                  '${state.quantityOf(product)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Tambah jumlah',
+                                  onPressed: () => state.add(product),
+                                  icon: const Icon(Icons.add_circle_outline),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        'Rp ${formatKilometers(int.parse(product.price.replaceAll(RegExp(r'[^0-9]'), '')) * state.quantityOf(product))}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SectionTitle('Alamat pengiriman · demo lokal'),
+              const CardBox(
+                child: Text(
+                  'Alamat belum diatur. Checkout ini hanya simulasi lokal; tidak ada pengiriman nyata.',
+                ),
+              ),
+              const SectionTitle('Pembayaran'),
+              const CardBox(
+                child: Text(
+                  'Belum ada pembayaran. Pesanan akan berstatus Menunggu pembayaran.',
+                ),
+              ),
+              const SizedBox(height: 12),
+              CardBox(
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Subtotal demo',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    Text(
+                      'Rp ${formatKilometers(state.cartSubtotal)}',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton(
+                onPressed: items.isEmpty
+                    ? null
+                    : () async {
+                        final order = await state.checkout();
+                        if (!context.mounted) return;
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => OrderConfirmationScreen(
+                              state: state,
+                              order: order,
+                            ),
+                          ),
+                        );
+                      },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+                child: const Text('Buat Pesanan Demo'),
+              ),
+            ],
           ),
-          const SectionTitle('Metode pembayaran'),
+        ),
+      );
+    },
+  );
+}
+
+class OrderConfirmationScreen extends StatelessWidget {
+  final OtoKuState state;
+  final String order;
+  const OrderConfirmationScreen({
+    super.key,
+    required this.state,
+    required this.order,
+  });
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Pesanan Dibuat',
+    child: ScrollPage(
+      child: Column(
+        children: [
           const CardBox(
-            child: Row(
+            color: AppColors.amberTint,
+            child: Column(
               children: [
-                Icon(Icons.account_balance_wallet_outlined),
-                SizedBox(width: 10),
-                Text('Pembayaran mock'),
-                Spacer(),
-                Icon(Icons.check_circle, color: AppColors.green),
+                Icon(
+                  Icons.receipt_long_outlined,
+                  color: AppColors.amber,
+                  size: 44,
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Menunggu pembayaran',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Pesanan demo tersimpan lokal. Tidak ada pembayaran atau pengiriman yang dilakukan.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 12),
+          CardBox(child: Text(order)),
+          const SizedBox(height: 18),
           FilledButton(
-            onPressed: () {
-              state.checkout(
-                state.cart.isNotEmpty ? state.cart.first.name : 'Sparepart',
-              );
-              Navigator.popUntil(c, (r) => r.isFirst);
-            },
+            onPressed: () => push(context, OrdersScreen(state: state)),
             style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
+              minimumSize: const Size.fromHeight(48),
             ),
-            child: const Text('Buat Pesanan'),
+            child: const Text('Lihat Pesanan'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () =>
+                Navigator.popUntil(context, (route) => route.isFirst),
+            child: const Text('Kembali ke Home'),
           ),
         ],
       ),
