@@ -11,6 +11,25 @@ flutter analyze
 flutter test
 ```
 
+## Google Maps
+
+The Peta screen goes through a `MapProvider` abstraction: on Android/iOS with a
+key present it renders a real `GoogleMap`, everywhere else it keeps the
+illustrated demo preview.
+
+1. Copy the template and fill in your key (`.env` is gitignored):
+
+   ```sh
+   cp .env.example .env
+   # GOOGLE_MAPS_API_KEY=...
+   ```
+
+2. Build/run again — Gradle injects the key into `AndroidManifest.xml` as
+   `com.google.android.geo.API_KEY` (environment variable of the same name also
+   works). Restrict the key to the app's package name and SHA-1 before release.
+
+Place coordinates in the seed data are demo values around Bekasi Utara.
+
 ## Local-first behavior
 
 `OtoKuRepository` keeps persistence outside the widgets. SQLite stores vehicle details, mileage, manual activity, maintenance completion, cart quantities, bookings, and orders. SharedPreferences stores the small onboarding-complete setting. Tests can inject `MemoryOtoKuRepository`.

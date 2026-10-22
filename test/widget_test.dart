@@ -41,8 +41,8 @@ void main() {
 
   testWidgets('OtoKu opens its prototype shell', (tester) async {
     await launchToHome(tester);
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Shop'), findsOneWidget);
+    expect(find.text('Beranda'), findsOneWidget);
+    expect(find.text('Toko'), findsOneWidget);
     expect(find.text('Peta'), findsOneWidget);
     expect(find.text('Honda Beat 2021'), findsOneWidget);
     await reveal(tester, find.text('OtoKu OBD-II Scanner'));
@@ -223,7 +223,7 @@ void main() {
     tester,
   ) async {
     await launchToHome(tester);
-    await tester.tap(find.text('Shop').last);
+    await tester.tap(find.text('Toko').last);
     await tester.pumpAndSettle();
     await reveal(tester, find.text('Oli Mesin Honda AHM SPX2'));
 
@@ -234,7 +234,7 @@ void main() {
     tester,
   ) async {
     await launchToHome(tester);
-    await tester.tap(find.text('Shop').last);
+    await tester.tap(find.text('Toko').last);
     await tester.pumpAndSettle();
     await reveal(tester, find.text('Oli Mesin Honda AHM SPX2'));
     await tester.tap(find.text('Oli Mesin Honda AHM SPX2').last);

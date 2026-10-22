@@ -1,3 +1,19 @@
+import java.util.Properties
+
+// Reads a key from the project-root .env (gitignored) or the environment.
+fun envKey(name: String): String {
+    val envFile = rootProject.file("../.env")
+    if (envFile.exists()) {
+        envFile.readLines().forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.startsWith("$name=")) {
+                return trimmed.substringAfter('=').trim().removeSurrounding("\"")
+            }
+        }
+    }
+    return System.getenv(name) ?: ""
+}
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -26,6 +42,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] = envKey("GOOGLE_MAPS_API_KEY")
     }
 
     buildTypes {

@@ -4,6 +4,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -21,6 +23,12 @@ Future<void> main() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
+  // Keys live in .env (gitignored); the shipped .env has placeholders only.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // Missing .env is fine: maps fall back to the illustrated preview.
+  }
   final repository = await SqliteOtoKuRepository.open();
   runApp(OtoKuApp(repository: repository));
 }
@@ -31,11 +39,11 @@ String formatKilometers(int value) => value.toString().replaceAllMapped(
 );
 
 class AppColors {
-  static const red = Color(0xFFE11D48), redDark = Color(0xFFDC2626);
+  static const red = Color(0xFFE21B23), redDark = Color(0xFFB81218);
   static const ink = Color(0xFF18181B), muted = Color(0xFF71717A);
   static const bg = Color(0xFFF8F8F9), border = Color(0xFFE4E4E7);
   static const green = Color(0xFF15803D), amber = Color(0xFFD97706);
-  static const redTint = Color(0xFFFFF1F2), greenTint = Color(0xFFDCFCE7);
+  static const redTint = Color(0xFFFDECEC), greenTint = Color(0xFFDCFCE7);
   static const amberTint = Color(0xFFFEF3C7), darkSurface = Color(0xFF18181B);
   // Kinetic Precision warm-neutral surfaces.
   static const surfaceLow = Color(0xFFF4F4F5);
@@ -86,6 +94,7 @@ class Product {
 class Workshop {
   final String name, rating, distance, services, category, address;
   final bool partner, bookingEnabled;
+  final double lat, lng;
   Workshop(
     this.name,
     this.rating,
@@ -95,6 +104,8 @@ class Workshop {
     this.address = 'Bekasi Utara · lokasi demo',
     this.partner = false,
     this.bookingEnabled = false,
+    this.lat = -6.1325,
+    this.lng = 106.9950,
   });
 }
 
@@ -159,6 +170,8 @@ class OtoKuState extends ChangeNotifier {
       category: 'Bengkel',
       partner: true,
       bookingEnabled: true,
+      lat: -6.1282,
+      lng: 106.9891,
     ),
     Workshop(
       'AutoCare Plus',
@@ -166,6 +179,8 @@ class OtoKuState extends ChangeNotifier {
       '3.4 km (demo)',
       'Spesialis CVT · Rem · Oli',
       category: 'Bengkel',
+      lat: -6.1401,
+      lng: 107.0024,
     ),
     Workshop(
       'Speed Motor',
@@ -173,6 +188,8 @@ class OtoKuState extends ChangeNotifier {
       '4.2 km (demo)',
       'Servis Lengkap · Body Part',
       category: 'Bengkel',
+      lat: -6.1215,
+      lng: 107.0085,
     ),
     Workshop(
       'SPBU Pertamina Demo',
@@ -180,6 +197,8 @@ class OtoKuState extends ChangeNotifier {
       '1.8 km (demo)',
       'Bahan bakar · area Bekasi Utara',
       category: 'SPBU',
+      lat: -6.1359,
+      lng: 106.9923,
     ),
     Workshop(
       'Minimarket Demo',
@@ -187,6 +206,8 @@ class OtoKuState extends ChangeNotifier {
       '0.9 km (demo)',
       'Kebutuhan perjalanan · area Bekasi Utara',
       category: 'Minimarket',
+      lat: -6.1268,
+      lng: 107.0016,
     ),
   ];
   final cart = <Product>[];
@@ -410,8 +431,8 @@ class _OtoKuAppState extends State<OtoKuApp> {
           brightness: Brightness.light,
           primary: AppColors.red,
           onPrimary: Colors.white,
-          primaryContainer: Color(0xFFFFE4E6),
-          onPrimaryContainer: Color(0xFF4C0519),
+          primaryContainer: AppColors.redTint,
+          onPrimaryContainer: Color(0xFF6B0D11),
           secondary: Color(0xFF52525B),
           onSecondary: Colors.white,
           secondaryContainer: Color(0xFFF4F4F5),
@@ -436,7 +457,7 @@ class _OtoKuAppState extends State<OtoKuApp> {
           outlineVariant: AppColors.border,
           inverseSurface: AppColors.ink,
           onInverseSurface: Color(0xFFFAFAFA),
-          inversePrimary: Color(0xFFFDA4AF),
+          inversePrimary: Color(0xFFFFB3B6),
           surfaceTint: AppColors.red,
           shadow: Color(0xFF09090B),
           scrim: Color(0xFF09090B),
@@ -797,7 +818,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
-  final pages = const ['Home', 'Shop', 'Peta', 'Pesanan', 'Akun'];
+  final pages = const ['Beranda', 'Toko', 'Peta', 'Pesanan', 'Akun'];
 
   @override
   void initState() {
@@ -839,12 +860,12 @@ class _AppShellState extends State<AppShell> {
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: 'Home',
+            label: 'Beranda',
           ),
           NavigationDestination(
             icon: Icon(Icons.grid_view_outlined),
             selectedIcon: Icon(Icons.grid_view),
-            label: 'Shop',
+            label: 'Toko',
           ),
           NavigationDestination(
             icon: Icon(Icons.map_outlined),
@@ -4001,26 +4022,13 @@ class _CatalogState extends State<CatalogScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: 'OtoKu',
-                              style: TextStyle(
-                                color: AppColors.red,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            TextSpan(
-                              text: '  ·  Shop',
-                              style: TextStyle(
-                                color: AppColors.ink,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
+                      const Text(
+                        'Toko',
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.4,
                         ),
-                        style: TextStyle(fontSize: 21, letterSpacing: -.4),
                       ),
                       const SizedBox(height: 1),
                       Row(
@@ -4982,7 +4990,16 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  const DemoMapPreview(),
+                  PlaceMapView(
+                    places: filtered,
+                    onOpen: (place) => push(
+                      c,
+                      WorkshopDetailScreen(
+                        state: widget.state,
+                        workshop: place,
+                      ),
+                    ),
+                  ),
                   Positioned(
                     left: 12,
                     right: 12,
@@ -5110,8 +5127,179 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
   );
 }
 
+/// Boundary between the Peta UI and a map SDK (PRD §3), so Google Maps can be
+/// swapped without rewriting screens.
+abstract interface class MapProvider {
+  bool get isLive;
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  });
+}
+
+/// Real map. Needs a Maps SDK key in `.env` (Android) and a supported platform.
+class GoogleMapsProvider implements MapProvider {
+  const GoogleMapsProvider();
+
+  @override
+  bool get isLive => true;
+
+  @override
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  }) => GoogleMapView(places: places, onOpen: onOpen);
+}
+
+/// Illustrated fallback for desktop, web, and key-less builds.
+class IllustratedMapProvider implements MapProvider {
+  const IllustratedMapProvider();
+
+  @override
+  bool get isLive => false;
+
+  @override
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  }) => DemoMapPreview(places: places, onOpen: onOpen);
+}
+
+MapProvider resolveMapProvider() {
+  if (kIsWeb) return const IllustratedMapProvider();
+  final mobile =
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+  final key = dotenv.isInitialized
+      ? (dotenv.maybeGet('GOOGLE_MAPS_API_KEY') ?? '').trim()
+      : '';
+  return mobile && key.isNotEmpty
+      ? const GoogleMapsProvider()
+      : const IllustratedMapProvider();
+}
+
+/// Chooses a map implementation once per screen and keeps it for the session.
+class PlaceMapView extends StatefulWidget {
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const PlaceMapView({super.key, required this.places, required this.onOpen});
+
+  @override
+  State<PlaceMapView> createState() => _PlaceMapViewState();
+}
+
+class _PlaceMapViewState extends State<PlaceMapView> {
+  final MapProvider provider = resolveMapProvider();
+
+  @override
+  Widget build(BuildContext context) =>
+      provider.build(places: widget.places, onOpen: widget.onOpen);
+}
+
+class GoogleMapView extends StatefulWidget {
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const GoogleMapView({super.key, required this.places, required this.onOpen});
+
+  @override
+  State<GoogleMapView> createState() => _GoogleMapViewState();
+}
+
+class _GoogleMapViewState extends State<GoogleMapView> {
+  GoogleMapController? _controller;
+
+  LatLng get _center => widget.places.isEmpty
+      ? const LatLng(-6.1325, 106.9950)
+      : LatLng(widget.places.first.lat, widget.places.first.lng);
+
+  Future<void> _recenter() async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.animateCamera(CameraUpdate.newLatLngZoom(_center, 14.5));
+  }
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(22),
+    child: SizedBox(
+      height: 230,
+      child: Stack(
+        children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(target: _center, zoom: 14),
+            markers: widget.places
+                .map(
+                  (place) => Marker(
+                    markerId: MarkerId(place.name),
+                    position: LatLng(place.lat, place.lng),
+                    onTap: () => widget.onOpen(place),
+                    infoWindow: InfoWindow(
+                      title: place.name,
+                      snippet: '${place.category} · ${place.distance}',
+                    ),
+                  ),
+                )
+                .toSet(),
+            onMapCreated: (controller) => _controller = controller,
+            myLocationButtonEnabled: false,
+            mapToolbarEnabled: false,
+            zoomControlsEnabled: true,
+            compassEnabled: true,
+            mapType: MapType.normal,
+          ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: IconButton(
+                tooltip: 'Pusatkan peta',
+                onPressed: _recenter,
+                icon: const Icon(
+                  Icons.my_location,
+                  color: AppColors.ink,
+                  size: 19,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class DemoMapPreview extends StatelessWidget {
-  const DemoMapPreview({super.key});
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const DemoMapPreview({
+    super.key,
+    this.places = const [],
+    required this.onOpen,
+  });
+
+  /// Places the demo pins by their relative coordinates.
+  List<(Workshop, double, double)> _positions() {
+    if (places.isEmpty) return const [];
+    var minLat = places.first.lat, maxLat = places.first.lat;
+    var minLng = places.first.lng, maxLng = places.first.lng;
+    for (final place in places) {
+      minLat = math.min(minLat, place.lat);
+      maxLat = math.max(maxLat, place.lat);
+      minLng = math.min(minLng, place.lng);
+      maxLng = math.max(maxLng, place.lng);
+    }
+    final spanLat = maxLat - minLat;
+    final spanLng = maxLng - minLng;
+    return places.map((place) {
+      final x = spanLng == 0 ? 0.5 : (place.lng - minLng) / spanLng;
+      final y = spanLat == 0 ? 0.5 : (maxLat - place.lat) / spanLat;
+      return (place, .12 + x * .62, .28 + y * .40);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) => Container(
     height: 230,
@@ -5131,21 +5319,24 @@ class DemoMapPreview extends StatelessWidget {
     child: Stack(
       children: [
         const Positioned.fill(child: CustomPaint(painter: DemoRoadPainter())),
-        const Positioned(
-          left: 40,
-          top: 72,
-          child: Icon(Icons.location_on, color: AppColors.red, size: 32),
-        ),
-        const Positioned(
-          right: 54,
-          top: 88,
-          child: Icon(Icons.location_on, color: AppColors.ink, size: 28),
-        ),
-        const Positioned(
-          left: 174,
-          top: 100,
-          child: Icon(Icons.location_on, color: AppColors.ink, size: 26),
-        ),
+        for (final (place, x, y) in _positions())
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: Align(
+              alignment: Alignment(x * 2 - 1, y * 2 - 1),
+              child: GestureDetector(
+                onTap: () => onOpen(place),
+                child: Icon(
+                  Icons.location_on,
+                  color: place.partner ? AppColors.red : AppColors.ink,
+                  size: place.partner ? 32 : 27,
+                ),
+              ),
+            ),
+          ),
         Positioned(
           right: 12,
           bottom: 38,
@@ -5981,26 +6172,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
             Row(
               children: [
                 const Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: 'OtoKu',
-                          style: TextStyle(
-                            color: AppColors.red,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        TextSpan(
-                          text: '  ·  Pesanan',
-                          style: TextStyle(
-                            color: AppColors.ink,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
+                  child: Text(
+                    'Pesanan',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -.4,
                     ),
-                    style: TextStyle(fontSize: 21, letterSpacing: -.4),
                   ),
                 ),
                 IconButton(
