@@ -113,6 +113,37 @@ void main() {
     expect(find.textContaining('Isi Pertalite'), findsOneWidget);
   });
 
+  testWidgets('User can add a custom vehicle and it becomes active', (
+    tester,
+  ) async {
+    await launchToHome(tester);
+    await tester.tap(find.text('Akun'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kendaraan Saya'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 kendaraan terdaftar'), findsOneWidget);
+    await tester.tap(find.text('Tambah Kendaraan'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('vehicle-brand')),
+      'Yamaha',
+    );
+    await tester.enterText(find.byKey(const ValueKey('vehicle-model')), 'NMAX');
+    await tester.enterText(find.byKey(const ValueKey('vehicle-year')), '2023');
+    await tester.enterText(
+      find.byKey(const ValueKey('vehicle-plate')),
+      'B 9999 ZZ',
+    );
+    await tester.tap(find.text('Simpan Kendaraan'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 kendaraan terdaftar'), findsOneWidget);
+    expect(find.text('Yamaha NMAX 2023'), findsOneWidget);
+    expect(find.text('Aktif'), findsOneWidget);
+  });
+
   testWidgets('Home quick action explains trip tracking is not available yet', (
     tester,
   ) async {
@@ -170,7 +201,7 @@ void main() {
       expect(find.text('Peta & Tempat'), findsOneWidget);
       await tester.tap(find.text('SPBU').first);
       await tester.pumpAndSettle();
-      expect(find.text('SPBU Pertamina Demo'), findsOneWidget);
+      expect(find.text('Pertamina 34-17542'), findsOneWidget);
       expect(find.text('Bengkel Jaya Motor'), findsNothing);
       expect(find.textContaining('OpenStreetMap'), findsOneWidget);
     },
@@ -186,7 +217,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bengkel Jaya Motor'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Booking partner demo'));
+    await tester.tap(find.text('Booking partner'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('booking-oil')));
     await tester.pumpAndSettle();
@@ -207,7 +238,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bengkel Jaya Motor'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Booking partner demo'));
+    await tester.tap(find.text('Booking partner'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Lanjutkan'));
     await tester.pumpAndSettle();
@@ -244,7 +275,7 @@ void main() {
     await tester.tap(find.byTooltip('Tambah jumlah'));
     await tester.pumpAndSettle();
     expect(find.text('2'), findsOneWidget);
-    await tester.tap(find.text('Buat Pesanan Demo'));
+    await tester.tap(find.text('Buat Pesanan'));
     await tester.pumpAndSettle();
 
     expect(find.text('Menunggu pembayaran'), findsOneWidget);
@@ -276,7 +307,7 @@ void main() {
     expect(find.text('OtoKu OBD-II Scanner'), findsOneWidget);
   });
 
-  testWidgets('OBD demo clearly identifies simulated vehicle information', (
+  testWidgets('OBD simulation clearly identifies example vehicle information', (
     tester,
   ) async {
     await launchToHome(tester);
@@ -287,8 +318,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Lihat simulasi OBD'));
     await tester.pumpAndSettle();
 
-    expect(find.text('OBD Demo Aktif'), findsOneWidget);
-    expect(find.text('Data OBD Demo'), findsOneWidget);
+    expect(find.text('OBD Simulasi Aktif'), findsOneWidget);
+    expect(find.text('Data OBD (Simulasi)'), findsOneWidget);
     expect(
       find.text('Data simulasi — bukan data kendaraan langsung'),
       findsOneWidget,

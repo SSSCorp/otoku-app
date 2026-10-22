@@ -54,7 +54,7 @@ class AppColors {
 }
 
 class Vehicle {
-  final String brand, model, plate, type;
+  final String id, brand, model, plate, type;
   final int year, mileage;
   Vehicle({
     required this.brand,
@@ -63,7 +63,37 @@ class Vehicle {
     required this.type,
     required this.year,
     required this.mileage,
+    this.id = '',
   });
+  Vehicle copyWith({String? id, int? mileage, String? plate, String? type}) =>
+      Vehicle(
+        id: id ?? this.id,
+        brand: brand,
+        model: model,
+        plate: plate ?? this.plate,
+        type: type ?? this.type,
+        year: year,
+        mileage: mileage ?? this.mileage,
+      );
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'brand': brand,
+    'model': model,
+    'plate': plate,
+    'type': type,
+    'year': year,
+    'mileage': mileage,
+  };
+  static Vehicle fromMap(Map<String, dynamic> map, {Vehicle? fallback}) =>
+      Vehicle(
+        id: map['id'] as String? ?? fallback?.id ?? '',
+        brand: map['brand'] as String? ?? fallback?.brand ?? 'Kendaraan',
+        model: map['model'] as String? ?? fallback?.model ?? 'Baru',
+        plate: map['plate'] as String? ?? fallback?.plate ?? '',
+        type: map['type'] as String? ?? fallback?.type ?? 'Belum tahu',
+        year: (map['year'] as num?)?.toInt() ?? fallback?.year ?? 2020,
+        mileage: ((map['mileage'] as num?)?.toInt() ?? 0).clamp(0, 1 << 31),
+      );
   String get name => '$brand $model $year';
 }
 
@@ -103,7 +133,7 @@ class Workshop {
     this.distance,
     this.services, {
     this.category = 'Bengkel',
-    this.address = 'BINUS Bekasi · lokasi demo',
+    this.address = 'BINUS Bekasi · area sekitar',
     this.partner = false,
     this.bookingEnabled = false,
     this.lat = -6.2196,
@@ -122,14 +152,28 @@ class OtoKuState extends ChangeNotifier {
   final bookings = <String>[];
   final completedMaintenance = <String>{};
 
-  Vehicle vehicle = Vehicle(
-    brand: 'Honda',
-    model: 'Beat',
-    plate: 'B 1234 XYZ',
-    type: 'CBS',
-    year: 2021,
-    mileage: 12450,
-  );
+  final List<Vehicle> vehicles = [
+    Vehicle(
+      id: 'veh-beat',
+      brand: 'Honda',
+      model: 'Beat',
+      plate: 'B 1234 XYZ',
+      type: 'CBS',
+      year: 2021,
+      mileage: 12450,
+    ),
+  ];
+  int activeVehicleIndex = 0;
+  Vehicle get vehicle => vehicles[activeVehicleIndex];
+  set vehicle(Vehicle value) {
+    if (vehicles.isEmpty) {
+      vehicles.add(value);
+      activeVehicleIndex = 0;
+    } else {
+      vehicles[activeVehicleIndex] = value;
+    }
+  }
+
   bool obdConnected = false;
   final List<Product> products = [
     Product(
@@ -167,49 +211,144 @@ class OtoKuState extends ChangeNotifier {
     Workshop(
       'Bengkel Jaya Motor',
       'Belum dinilai',
-      '2.1 km (demo)',
-      'Servis Rutin · Ganti Oli',
+      '0.3 km',
+      'Servis rutin · Ganti oli',
       category: 'Bengkel',
       partner: true,
       bookingEnabled: true,
-      lat: -6.2262,
-      lng: 107.0065,
+      lat: -6.2178,
+      lng: 107.0008,
+      address: 'Marga Mulya, Bekasi Utara',
     ),
     Workshop(
-      'AutoCare Plus',
+      'Karla Jaya Motor',
       'Belum dinilai',
-      '3.4 km (demo)',
-      'Spesialis CVT · Rem · Oli',
+      '5.6 km',
+      'Bengkel umum · servis mesin',
       category: 'Bengkel',
-      lat: -6.2331,
-      lng: 106.9912,
+      lat: -6.27008,
+      lng: 107.00381,
+      address: 'Bekasi Selatan',
     ),
     Workshop(
-      'Speed Motor',
+      'Fahmi Jaya Motor',
       'Belum dinilai',
-      '4.2 km (demo)',
-      'Servis Lengkap · Body Part',
+      '5.6 km',
+      'Bengkel umum · tune up',
       category: 'Bengkel',
-      lat: -6.2089,
-      lng: 107.0102,
+      lat: -6.27011,
+      lng: 107.00391,
+      address: 'Bekasi Selatan',
     ),
     Workshop(
-      'SPBU Pertamina Demo',
+      'Honda Service',
       'Belum dinilai',
-      '1.8 km (demo)',
+      '6.9 km',
+      'Servis resmi · sparepart',
+      category: 'Bengkel',
+      lat: -6.24477,
+      lng: 106.94271,
+      address: 'Jatiasih, Bekasi',
+    ),
+    Workshop(
+      'PT Duren Sawit Mobilindo',
+      'Belum dinilai',
+      '8.6 km',
+      'Servis mobil · body repair',
+      category: 'Bengkel',
+      lat: -6.23056,
+      lng: 106.92295,
+      address: 'Duren Sawit, Jakarta Timur',
+    ),
+    Workshop(
+      'Pertamina 34-17542',
+      'Belum dinilai',
+      '3.9 km',
       'Bahan bakar · area Bekasi Utara',
       category: 'SPBU',
-      lat: -6.2131,
-      lng: 106.9881,
+      lat: -6.21339,
+      lng: 107.03379,
+      address: 'Bekasi Utara',
     ),
     Workshop(
-      'Minimarket Demo',
+      'SPBU 34-13908',
       'Belum dinilai',
-      '0.9 km (demo)',
-      'Kebutuhan perjalanan · area Bekasi Utara',
+      '4.9 km',
+      'Bahan bakar · area Jakarta Timur',
+      category: 'SPBU',
+      lat: -6.18954,
+      lng: 106.96733,
+      address: 'Cakung, Jakarta Timur',
+    ),
+    Workshop(
+      'SPBU 34-13907',
+      'Belum dinilai',
+      '5.2 km',
+      'Bahan bakar · area Bekasi Barat',
+      category: 'SPBU',
+      lat: -6.20783,
+      lng: 106.95396,
+      address: 'Bekasi Barat',
+    ),
+    Workshop(
+      'SPBU 34-13905',
+      'Belum dinilai',
+      '5.3 km',
+      'Bahan bakar · area Bekasi Barat',
+      category: 'SPBU',
+      lat: -6.19974,
+      lng: 106.95595,
+      address: 'Bekasi Barat',
+    ),
+    Workshop(
+      'SPBU 34-13421',
+      'Belum dinilai',
+      '6.3 km',
+      'Bahan bakar · area Jatiasih',
+      category: 'SPBU',
+      lat: -6.21833,
+      lng: 106.94258,
+      address: 'Jatiasih, Bekasi',
+    ),
+    Workshop(
+      'Alfamart KH Muchtar Tabrani',
+      'Belum dinilai',
+      '0.5 km',
+      'Minimarket · kebutuhan harian',
       category: 'Minimarket',
-      lat: -6.2245,
-      lng: 106.9930,
+      lat: -6.22173,
+      lng: 107.00317,
+      address: 'Jl. KH Muchtar Tabrani',
+    ),
+    Workshop(
+      'Indomaret KH Muchtar Tabrani',
+      'Belum dinilai',
+      '0.5 km',
+      'Minimarket · kebutuhan harian',
+      category: 'Minimarket',
+      lat: -6.22223,
+      lng: 107.00331,
+      address: 'Jl. KH Muchtar Tabrani',
+    ),
+    Workshop(
+      'Indomaret Marga Mulya',
+      'Belum dinilai',
+      '0.7 km',
+      'Minimarket · kebutuhan harian',
+      category: 'Minimarket',
+      lat: -6.21487,
+      lng: 107.00322,
+      address: 'Marga Mulya, Bekasi Utara',
+    ),
+    Workshop(
+      'Indomaret Harapan Jaya',
+      'Belum dinilai',
+      '0.9 km',
+      'Minimarket · kebutuhan harian',
+      category: 'Minimarket',
+      lat: -6.21446,
+      lng: 107.00518,
+      address: 'Harapan Jaya, Bekasi Utara',
     ),
   ];
   final cart = <Product>[];
@@ -218,19 +357,33 @@ class OtoKuState extends ChangeNotifier {
     onboardingComplete = await repository.hasCompletedOnboarding();
     final saved = await repository.loadState();
     if (saved != null) {
-      final savedVehicle = saved['vehicle'];
-      final details = savedVehicle is Map
-          ? Map<String, dynamic>.from(savedVehicle)
-          : <String, dynamic>{};
-      final mileage = details['mileage'] ?? saved['mileage'];
-      vehicle = Vehicle(
-        brand: details['brand'] as String? ?? vehicle.brand,
-        model: details['model'] as String? ?? vehicle.model,
-        plate: details['plate'] as String? ?? vehicle.plate,
-        type: details['type'] as String? ?? vehicle.type,
-        year: details['year'] as int? ?? vehicle.year,
-        mileage: mileage is int && mileage >= 0 ? mileage : vehicle.mileage,
-      );
+      final savedVehicles = saved['vehicles'];
+      if (savedVehicles is List && savedVehicles.isNotEmpty) {
+        vehicles
+          ..clear()
+          ..addAll(
+            savedVehicles.whereType<Map>().map(
+              (entry) => Vehicle.fromMap(Map<String, dynamic>.from(entry)),
+            ),
+          );
+      } else {
+        final savedVehicle = saved['vehicle'];
+        if (savedVehicle is Map) {
+          final details = Map<String, dynamic>.from(savedVehicle);
+          final mileage = details['mileage'] ?? saved['mileage'];
+          vehicles
+            ..clear()
+            ..add(
+              Vehicle.fromMap({
+                ...details,
+                if (mileage is int) 'mileage': mileage,
+              }),
+            );
+        }
+      }
+      if (vehicles.isEmpty) vehicles.add(_seedVehicle());
+      final savedIndex = (saved['activeVehicleIndex'] as num?)?.toInt() ?? 0;
+      activeVehicleIndex = savedIndex.clamp(0, vehicles.length - 1);
       obdConnected = saved['obdConnected'] == true;
       orders
         ..clear()
@@ -273,14 +426,9 @@ class OtoKuState extends ChangeNotifier {
 
   Future<void> _persist() => repository.saveState({
     'mileage': vehicle.mileage,
-    'vehicle': {
-      'brand': vehicle.brand,
-      'model': vehicle.model,
-      'plate': vehicle.plate,
-      'type': vehicle.type,
-      'year': vehicle.year,
-      'mileage': vehicle.mileage,
-    },
+    'vehicles': vehicles.map((item) => item.toMap()).toList(),
+    'activeVehicleIndex': activeVehicleIndex,
+    'vehicle': vehicle.toMap(),
     'obdConnected': obdConnected,
     'cart': cart.map((product) => product.id).toList(),
     'orders': orders,
@@ -391,8 +539,58 @@ class OtoKuState extends ChangeNotifier {
     await _persist();
   }
 
+  Vehicle _seedVehicle() => Vehicle(
+    id: 'veh-beat',
+    brand: 'Honda',
+    model: 'Beat',
+    plate: 'B 1234 XYZ',
+    type: 'CBS',
+    year: 2021,
+    mileage: 12450,
+  );
+
+  /// Adds a user-defined vehicle and makes it the active one.
+  Future<Vehicle> addVehicle(Vehicle vehicle) async {
+    final created = vehicle.copyWith(
+      id: vehicle.id.isEmpty
+          ? 'veh-${DateTime.now().microsecondsSinceEpoch}'
+          : vehicle.id,
+    );
+    vehicles.add(created);
+    activeVehicleIndex = vehicles.length - 1;
+    notifyListeners();
+    await _persist();
+    return created;
+  }
+
+  Future<void> selectVehicle(int index) async {
+    if (index < 0 || index >= vehicles.length || index == activeVehicleIndex) {
+      return;
+    }
+    activeVehicleIndex = index;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// Removes a vehicle, keeping at least one registered vehicle.
+  Future<bool> removeVehicle(int index) async {
+    if (vehicles.length <= 1 || index < 0 || index >= vehicles.length) {
+      return false;
+    }
+    vehicles.removeAt(index);
+    if (activeVehicleIndex >= vehicles.length) {
+      activeVehicleIndex = vehicles.length - 1;
+    } else if (index < activeVehicleIndex) {
+      activeVehicleIndex--;
+    }
+    notifyListeners();
+    await _persist();
+    return true;
+  }
+
   Future<void> updateMileage(int mileage) => updateVehicle(
     Vehicle(
+      id: vehicle.id,
       brand: vehicle.brand,
       model: vehicle.model,
       plate: vehicle.plate,
@@ -683,7 +881,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     (
       Icons.health_and_safety_outlined,
       'Kamu tetap bisa tanpa OBD',
-      'Fitur perawatan manual tetap berjalan. Data OBD demo selalu diberi label simulasi.',
+      'Fitur perawatan manual tetap berjalan. Data OBD selalu diberi label simulasi.',
     ),
     (
       Icons.storefront_outlined,
@@ -1491,7 +1689,7 @@ class HomeScreen extends StatelessWidget {
                     : LockedObdCard(state: state),
                 if (state.obdConnected) ...[
                   SectionTitle(
-                    'Data OBD Demo',
+                    'Data OBD (Simulasi)',
                     action: 'Lihat Semua',
                     onTap: () => push(context, ObdScreen(state: state)),
                   ),
@@ -1499,7 +1697,7 @@ class HomeScreen extends StatelessWidget {
                     onTap: () => push(context, ObdScreen(state: state)),
                   ),
                   SectionTitle(
-                    'Kondisi Kendaraan (Demo)',
+                    'Kondisi Kendaraan',
                     action: 'Lihat Detail',
                     onTap: () => push(context, ObdScreen(state: state)),
                   ),
@@ -1594,7 +1792,7 @@ class _LockedObdCardState extends State<LockedObdCard> {
           onPageChanged: (page) => setState(() => _page = page),
           children: [
             _ObdAdSlide(
-              badge: 'DEMO',
+              badge: 'SIMULASI',
               title: 'OtoKu OBD-II Scanner',
               body: 'Diagnosa & cek voltase aki dari HP',
               action: 'Lihat',
@@ -1843,7 +2041,7 @@ class ConnectedObdCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'OBD Demo Aktif',
+                'OBD Simulasi Aktif',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
               Text(
@@ -2199,6 +2397,485 @@ void showNotificationSheet(BuildContext context) {
   );
 }
 
+class VehicleListScreen extends StatelessWidget {
+  final OtoKuState state;
+  const VehicleListScreen({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: state,
+    builder: (context, _) => Page(
+      title: 'Kendaraan Saya',
+      actions: [
+        IconButton(
+          tooltip: 'Tambah kendaraan',
+          onPressed: () => push(context, AddVehicleScreen(state: state)),
+          icon: const Icon(Icons.add),
+        ),
+      ],
+      bottomBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            onPressed: () => push(context, AddVehicleScreen(state: state)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.add, size: 19),
+            label: const Text('Tambah Kendaraan'),
+          ),
+        ),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          Text(
+            '${state.vehicles.length} kendaraan terdaftar',
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          for (final (index, item) in state.vehicles.indexed) ...[
+            _VehicleRow(
+              vehicle: item,
+              active: index == state.activeVehicleIndex,
+              onTap: () async {
+                await state.selectVehicle(index);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('${item.name} jadi kendaraan aktif')),
+                );
+              },
+              onOpen: () => push(context, VehicleDetailScreen(state: state)),
+              onEdit: () => push(context, VehicleEditScreen(state: state)),
+              onDelete: state.vehicles.length <= 1
+                  ? null
+                  : () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Hapus kendaraan?'),
+                          content: Text(
+                            '${item.name} akan dihapus dari perangkat ini.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('Batal'),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('Hapus'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true) return;
+                      final removed = await state.removeVehicle(index);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            removed
+                                ? 'Kendaraan dihapus'
+                                : 'Minimal satu kendaraan harus tersisa',
+                          ),
+                        ),
+                      );
+                    },
+            ),
+            const SizedBox(height: 10),
+          ],
+          CardBox(
+            color: AppColors.surfaceLow,
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: AppColors.muted),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Data kendaraan disimpan lokal. Tambah kendaraan manual tidak memverifikasi kepemilikan atau kompatibilitas OBD.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehicleRow extends StatelessWidget {
+  final Vehicle vehicle;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+  final VoidCallback? onDelete;
+  const _VehicleRow({
+    required this.vehicle,
+    required this.active,
+    required this.onTap,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active ? AppColors.red : AppColors.border,
+            width: active ? 1.5 : 1,
+          ),
+          boxShadow: _cardShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLow,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                vehicle.brand.toLowerCase().contains('honda') ||
+                        vehicle.brand.toLowerCase().contains('yamaha')
+                    ? Icons.two_wheeler
+                    : Icons.directions_car,
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          vehicle.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      if (active) ...[
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.greenTint,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Aktif',
+                            style: TextStyle(
+                              color: AppColors.green,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${vehicle.plate.isEmpty ? "Tanpa plat" : vehicle.plate} · ${formatKilometers(vehicle.mileage)} km',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    active
+                        ? 'Kendaraan aktif untuk Home, Shop & Peta'
+                        : 'Ketuk untuk jadikan aktif',
+                    style: TextStyle(
+                      color: active ? AppColors.red : AppColors.muted,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Opsi kendaraan',
+              icon: const Icon(Icons.more_vert, color: AppColors.muted),
+              onSelected: (value) {
+                switch (value) {
+                  case 'open':
+                    onOpen();
+                  case 'edit':
+                    onEdit();
+                  case 'delete':
+                    onDelete?.call();
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'open', child: Text('Lihat detail')),
+                const PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+                if (onDelete != null)
+                  const PopupMenuItem(value: 'delete', child: Text('Hapus')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class AddVehicleScreen extends StatefulWidget {
+  final OtoKuState state;
+  const AddVehicleScreen({super.key, required this.state});
+
+  @override
+  State<AddVehicleScreen> createState() => _AddVehicleScreenState();
+}
+
+class _AddVehicleScreenState extends State<AddVehicleScreen> {
+  final _brand = TextEditingController();
+  final _model = TextEditingController();
+  final _variant = TextEditingController(text: 'Belum tahu');
+  final _plate = TextEditingController();
+  final _year = TextEditingController(text: '${DateTime.now().year}');
+  final _mileage = TextEditingController(text: '0');
+  String kind = 'Motor';
+  bool saving = false;
+
+  @override
+  void dispose() {
+    _brand.dispose();
+    _model.dispose();
+    _variant.dispose();
+    _plate.dispose();
+    _year.dispose();
+    _mileage.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (saving) return;
+    final brand = _brand.text.trim();
+    final model = _model.text.trim();
+    final year = int.tryParse(_year.text.trim());
+    final mileage = int.tryParse(_mileage.text.trim());
+    if (brand.isEmpty || model.isEmpty) {
+      _error('Isi merek dan model kendaraan.');
+      return;
+    }
+    if (year == null || year < 1900 || year > DateTime.now().year + 1) {
+      _error('Masukkan tahun kendaraan yang valid.');
+      return;
+    }
+    if (_mileage.text.trim().isNotEmpty && (mileage == null || mileage < 0)) {
+      _error('Masukkan angka kilometer yang valid.');
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await widget.state.addVehicle(
+        Vehicle(
+          brand: brand,
+          model: model,
+          plate: _plate.text.trim(),
+          type: _variant.text.trim().isEmpty
+              ? 'Belum tahu'
+              : _variant.text.trim(),
+          year: year,
+          mileage: mileage ?? 0,
+        ),
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  void _error(String message) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Tambah Kendaraan',
+    bottomBar: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton(
+          onPressed: saving ? null : _save,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          child: Text(saving ? 'Menyimpan...' : 'Simpan Kendaraan'),
+        ),
+      ),
+    ),
+    child: ScrollPage(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Jenis kendaraan',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (final option in ['Motor', 'Mobil'])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(option),
+                    selected: kind == option,
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() => kind = option),
+                    backgroundColor: AppColors.surfaceLow,
+                    selectedColor: AppColors.red,
+                    labelStyle: TextStyle(
+                      color: kind == option ? Colors.white : AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                    side: BorderSide.none,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _VehicleField(
+            key: const ValueKey('vehicle-brand'),
+            controller: _brand,
+            label: 'Merek',
+            hint: 'Honda, Yamaha, Toyota...',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-model'),
+            controller: _model,
+            label: 'Model',
+            hint: 'Beat, NMAX, Avanza...',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-year'),
+            controller: _year,
+            label: 'Tahun',
+            hint: '2021',
+            keyboardType: TextInputType.number,
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-variant'),
+            controller: _variant,
+            label: 'Varian (opsional)',
+            hint: 'CBS, ABS, Deluxe...',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-plate'),
+            controller: _plate,
+            label: 'Plat nomor (opsional)',
+            hint: 'B 1234 XYZ',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-mileage'),
+            controller: _mileage,
+            label: 'Kilometer saat ini (opsional)',
+            hint: '0',
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 6),
+          CardBox(
+            color: AppColors.surfaceLow,
+            child: Text(
+              kind == 'Motor'
+                  ? 'Kendaraan motor. Spesifikasi dari katalog belum tersedia, jadi varian ditandai "Belum tahu" bila tidak diisi.'
+                  : 'Kendaraan mobil. Spesifikasi dari katalog belum tersedia, jadi varian ditandai "Belum tahu" bila tidak diisi.',
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 11,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehicleField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label, hint;
+  final TextInputType? keyboardType;
+  const _VehicleField({
+    super.key,
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.keyboardType,
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          decoration: InputDecoration(
+            hintText: hint,
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.ink, width: 1.5),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class VehicleEditScreen extends StatefulWidget {
   final OtoKuState state;
   const VehicleEditScreen({super.key, required this.state});
@@ -2257,6 +2934,7 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
     setState(() => saving = true);
     await widget.state.updateVehicle(
       Vehicle(
+        id: widget.state.vehicle.id,
         brand: _brand.text.trim(),
         model: _model.text.trim(),
         plate: _plate.text.trim().toUpperCase(),
@@ -2584,7 +3262,7 @@ class VehicleDetailScreen extends StatelessWidget {
                             ),
                             SizedBox(height: 2),
                             Text(
-                              'Spesifikasi dari katalog demo. OBD belum tersinkronisasi ke akun.',
+                              'Spesifikasi dari katalog contoh. OBD belum tersinkronisasi ke akun.',
                               style: TextStyle(
                                 color: AppColors.muted,
                                 fontSize: 11,
@@ -2651,7 +3329,7 @@ class VehicleDetailScreen extends StatelessWidget {
             iconColor: const Color(0xFF047857),
             title: 'Data OBD & Telemetri',
             subtitle: state.obdConnected
-                ? 'Simulasi OBD aktif · data demo'
+                ? 'Simulasi OBD aktif · data contoh'
                 : 'Belum terhubung · coba simulasi',
             showDot: state.obdConnected,
             onTap: () => state.obdConnected
@@ -3214,7 +3892,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Jarak target adalah estimasi demo, bukan jadwal pabrikan.',
+              'Jarak target adalah estimasi contoh, bukan jadwal pabrikan.',
               style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 12),
@@ -3267,7 +3945,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            '${formatKilometers(current)} / ${formatKilometers(task.target)} km · demo',
+                            '${formatKilometers(current)} / ${formatKilometers(task.target)} km · simulasi',
                             style: const TextStyle(
                               color: AppColors.muted,
                               fontSize: 11,
@@ -3783,7 +4461,7 @@ class ChartPanel extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          '${values.length} catatan lokal · data demo',
+          '${values.length} catatan lokal · data contoh',
           style: const TextStyle(color: AppColors.muted, fontSize: 11),
         ),
       ],
@@ -3873,7 +4551,7 @@ class ObdScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'OBD Demo Aktif',
+                      'OBD Simulasi Aktif',
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     Text(
@@ -3905,7 +4583,7 @@ class ObdScreen extends StatelessWidget {
               Expanded(child: HealthItem('1 Kode Masalah', 'P0301', false)),
             ],
           ),
-          const SectionTitle('Kode Masalah (Contoh Demo)'),
+          const SectionTitle('Kode Masalah (Contoh)'),
           CardBox(
             onTap: () => showRecommendation(c),
             child: const ListTile(
@@ -4235,7 +4913,7 @@ class _CatalogState extends State<CatalogScreen> {
                                       ),
                                       SizedBox(height: 4),
                                       Text(
-                                        'Contoh data diagnostik di smartphone. Mode demo — belum membaca kendaraan.',
+                                        'Contoh data diagnostik di smartphone. Mode simulasi — belum membaca kendaraan.',
                                         style: TextStyle(
                                           color: Color(0xFFD4D4D8),
                                           fontSize: 11,
@@ -4282,7 +4960,7 @@ class _CatalogState extends State<CatalogScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Contoh harga · demo',
+                                          'Rp 179.000',
                                           style: TextStyle(
                                             color: Colors.white,
                                             fontSize: 15,
@@ -4290,7 +4968,7 @@ class _CatalogState extends State<CatalogScreen> {
                                           ),
                                         ),
                                         Text(
-                                          'Belum ada pembelian nyata',
+                                          'Harga perangkat · belum ada pembelian',
                                           style: TextStyle(
                                             color: Color(0xFF34D399),
                                             fontSize: 10,
@@ -4314,7 +4992,7 @@ class _CatalogState extends State<CatalogScreen> {
                                       ),
                                     ),
                                     icon: const Text(
-                                      'Lihat Demo',
+                                      'Lihat',
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -4464,7 +5142,7 @@ class ProductCard extends StatelessWidget {
                 ),
               ),
               const Text(
-                'Stok belum dikonfirmasi · demo',
+                'Stok belum dikonfirmasi',
                 style: TextStyle(color: AppColors.muted, fontSize: 10),
               ),
             ],
@@ -4790,7 +5468,7 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      const StatusChip('Data katalog demo', AppColors.muted),
+                      const StatusChip('Data katalog contoh', AppColors.muted),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -4817,7 +5495,7 @@ class ProductDetailScreen extends StatelessWidget {
                     ),
                   const CardBox(
                     child: Text(
-                      'Produk dan harga ini data demo lokal. Stok, penjual, dan ketentuan pemasangan belum dikonfirmasi.',
+                      'Produk dan harga ini data contoh lokal. Stok, penjual, dan ketentuan pemasangan belum dikonfirmasi.',
                       style: TextStyle(color: AppColors.muted, height: 1.4),
                     ),
                   ),
@@ -4961,7 +5639,7 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'BINUS Bekasi · lokasi demo',
+                          'BINUS Bekasi · area sekitar',
                           style: TextStyle(
                             fontSize: 11,
                             color: AppColors.muted,
@@ -5129,7 +5807,7 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
   );
 }
 
-/// Map anchor used for the first camera position and demo framing.
+/// Map anchor used for the first camera position and sample framing.
 const defaultMapLat = -6.2196; // BINUS Bekasi
 const defaultMapLng = 106.9995;
 gmaps.LatLng get googleMapCenter =>
@@ -5176,7 +5854,7 @@ class OsmMapProvider implements MapProvider {
   }) => OsmMapView(places: places, onOpen: onOpen);
 }
 
-/// Pure illustration, kept for offline demos (`MAP_PROVIDER=illustrated`).
+/// Pure illustration, kept for offline previews (`MAP_PROVIDER=illustrated`).
 class IllustratedMapProvider implements MapProvider {
   const IllustratedMapProvider();
 
@@ -5187,7 +5865,7 @@ class IllustratedMapProvider implements MapProvider {
   Widget build({
     required List<Workshop> places,
     required ValueChanged<Workshop> onOpen,
-  }) => DemoMapPreview(places: places, onOpen: onOpen);
+  }) => IllustratedMapPreview(places: places, onOpen: onOpen);
 }
 
 /// `MAP_PROVIDER` in `.env` overrides selection: `google`, `osm`, `illustrated`.
@@ -5432,16 +6110,16 @@ class _GoogleMapViewState extends State<GoogleMapView> {
   );
 }
 
-class DemoMapPreview extends StatelessWidget {
+class IllustratedMapPreview extends StatelessWidget {
   final List<Workshop> places;
   final ValueChanged<Workshop> onOpen;
-  const DemoMapPreview({
+  const IllustratedMapPreview({
     super.key,
     this.places = const [],
     required this.onOpen,
   });
 
-  /// Places demo pins by their relative coordinates, framed around BINUS.
+  /// Places sample pins by their relative coordinates, framed around BINUS.
   ({List<(Workshop, double, double)> places, double campX, double campY})
   _layout() {
     final lats = [defaultMapLat, ...places.map((p) => p.lat)];
@@ -5483,7 +6161,7 @@ class DemoMapPreview extends StatelessWidget {
         return Stack(
           children: [
             const Positioned.fill(
-              child: CustomPaint(painter: DemoRoadPainter()),
+              child: CustomPaint(painter: IllustratedRoadPainter()),
             ),
             Align(
               alignment: Alignment(layout.campX * 2 - 1, layout.campY * 2 - 1),
@@ -5554,7 +6232,7 @@ class DemoMapPreview extends StatelessWidget {
                   onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                        'Lokasi saat ini tidak tersedia di mode demo',
+                        'Lokasi saat ini tidak tersedia di mode ilustrasi',
                       ),
                     ),
                   ),
@@ -5576,7 +6254,7 @@ class DemoMapPreview extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  'Peta ilustrasi · lokasi demo',
+                  'Peta ilustrasi · area contoh',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -5592,8 +6270,8 @@ class DemoMapPreview extends StatelessWidget {
   );
 }
 
-class DemoRoadPainter extends CustomPainter {
-  const DemoRoadPainter();
+class IllustratedRoadPainter extends CustomPainter {
+  const IllustratedRoadPainter();
   @override
   void paint(Canvas canvas, Size size) {
     final road = Paint()
@@ -5626,7 +6304,7 @@ class DemoRoadPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant DemoRoadPainter oldDelegate) => false;
+  bool shouldRepaint(covariant IllustratedRoadPainter oldDelegate) => false;
 }
 
 class WorkshopCard extends StatelessWidget {
@@ -5668,8 +6346,8 @@ class WorkshopCard extends StatelessWidget {
               const SizedBox(height: 5),
               Text(
                 w.partner
-                    ? 'Partner OtoKu · demo'
-                    : 'Lokasi demo · belum diverifikasi',
+                    ? 'Partner OtoKu'
+                    : 'Lokasi contoh · belum diverifikasi',
                 style: TextStyle(
                   color: w.partner ? AppColors.green : AppColors.muted,
                   fontSize: 12,
@@ -5752,7 +6430,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                 ),
-                child: const Text('Booking partner demo'),
+                child: const Text('Booking partner'),
               ),
             ),
           )
@@ -5829,7 +6507,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      workshop.partner ? 'MITRA OtoKu · DEMO' : 'TEMPAT · DEMO',
+                      workshop.partner ? 'MITRA OtoKu' : 'TEMPAT',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
@@ -5868,7 +6546,7 @@ class WorkshopDetailScreen extends StatelessWidget {
               ),
               const Spacer(),
               StatusChip(
-                workshop.partner ? 'Partner demo' : 'Belum diverifikasi',
+                workshop.partner ? 'Partner' : 'Belum diverifikasi',
                 workshop.partner ? AppColors.green : AppColors.muted,
               ),
             ],
@@ -5916,7 +6594,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                   onTap: () => showPrototypeNotice(
                     c,
                     'Rute',
-                    'Navigasi peta belum tersedia pada demo.',
+                    'Navigasi peta belum tersedia pada mode ini.',
                   ),
                 ),
                 _PlaceAction(
@@ -5932,7 +6610,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                   icon: Icons.bookmark_border,
                   label: 'Simpan',
                   onTap: () => ScaffoldMessenger.of(c).showSnackBar(
-                    const SnackBar(content: Text('Tempat disimpan dalam demo')),
+                    const SnackBar(content: Text('Tempat disimpan')),
                   ),
                 ),
                 _PlaceAction(
@@ -5941,7 +6619,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                   onTap: () => showPrototypeNotice(
                     c,
                     'Bagikan',
-                    'Tautan tempat demo belum tersedia.',
+                    'Tautan tempat belum tersedia.',
                   ),
                 ),
               ],
@@ -6194,19 +6872,19 @@ class _BookingState extends State<BookingScreen> {
           BookingServiceTile(
             key: const ValueKey('booking-oil'),
             title: 'Ganti Oli Mesin',
-            price: 'Estimasi demo Rp 50.000',
-            duration: '30 menit (demo)',
+            price: 'Estimasi Rp 50.000',
+            duration: '30 menit',
             selected: oilSelected,
             onTap: () => setState(() => oilSelected = !oilSelected),
           ),
           BookingServiceTile(
             title: 'Servis CVT',
-            price: 'Estimasi demo Rp 80.000',
-            duration: '45 menit (demo)',
+            price: 'Estimasi Rp 80.000',
+            duration: '45 menit',
             selected: cvtSelected,
             onTap: () => setState(() => cvtSelected = !cvtSelected),
           ),
-          const SectionTitle('Pilih Tanggal · jadwal demo'),
+          const SectionTitle('Pilih Tanggal'),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -6395,7 +7073,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   onPressed: () => showPrototypeNotice(
                     context,
                     'Bantuan',
-                    'Pesanan lokal demo. Status pembayaran dan pengiriman belum tersedia.',
+                    'Pesanan lokal. Status pembayaran dan pengiriman belum tersedia.',
                   ),
                   icon: const Icon(Icons.help_outline, color: AppColors.muted),
                 ),
@@ -6613,7 +7291,7 @@ class OrderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     order.startsWith('#SV')
-                        ? 'Permintaan demo · menunggu respons bengkel'
+                        ? 'Permintaan · menunggu respons bengkel'
                         : 'Transaksi simulasi · belum ada pembayaran',
                     style: const TextStyle(
                       color: AppColors.muted,
@@ -6655,7 +7333,7 @@ class OrderDetailScreen extends StatelessWidget {
           const SizedBox(height: 16),
           CardBox(
             child: Text(
-              'Status: ${order.split(' • ').firstWhere((field) => ['Menunggu pembayaran', 'Menunggu konfirmasi', 'Diproses', 'Dikirim', 'Selesai', 'Dibatalkan'].contains(field), orElse: () => 'Belum diketahui')}\nStatus demo lokal; belum ada konfirmasi pembayaran, penjual, atau bengkel.',
+              'Status: ${order.split(' • ').firstWhere((field) => ['Menunggu pembayaran', 'Menunggu konfirmasi', 'Diproses', 'Dikirim', 'Selesai', 'Dibatalkan'].contains(field), orElse: () => 'Belum diketahui')}\nStatus lokal; belum ada konfirmasi pembayaran, penjual, atau bengkel.',
               style: const TextStyle(height: 1.5),
             ),
           ),
@@ -6705,7 +7383,7 @@ class AccountScreen extends StatelessWidget {
       (
         title: 'Kendaraan Saya',
         icon: Icons.two_wheeler,
-        onTap: () => push(c, VehicleDetailScreen(state: state)),
+        onTap: () => push(c, VehicleListScreen(state: state)),
       ),
       (
         title: 'Pesanan Saya',
@@ -6723,7 +7401,7 @@ class AccountScreen extends StatelessWidget {
         onTap: () => showPrototypeNotice(
           c,
           'Alamat Saya',
-          'Alamat belum disimpan. Checkout demo tidak melakukan pengiriman.',
+          'Alamat belum disimpan. Checkout ini tidak melakukan pengiriman.',
         ),
       ),
       (
@@ -6750,7 +7428,7 @@ class AccountScreen extends StatelessWidget {
         onTap: () => showPrototypeNotice(
           c,
           'Tentang OtoKu',
-          'Prototipe lokal. Data demo diberi label dan disimpan pada perangkat.',
+          'Prototipe lokal. Data contoh diberi label dan disimpan pada perangkat.',
         ),
       ),
     ];
@@ -6758,36 +7436,40 @@ class AccountScreen extends StatelessWidget {
       List<({String title, IconData icon, VoidCallback onTap})> items,
     ) => DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
         boxShadow: _cardShadow,
       ),
-      child: Column(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            ListTile(
-              minLeadingWidth: 24,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              leading: Icon(items[i].icon, color: AppColors.muted, size: 22),
-              title: Text(
-                items[i].title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              ListTile(
+                minLeadingWidth: 24,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: Icon(items[i].icon, color: AppColors.muted, size: 22),
+                title: Text(
+                  items[i].title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.muted,
+                  size: 20,
+                ),
+                onTap: items[i].onTap,
               ),
-              trailing: const Icon(
-                Icons.chevron_right,
-                color: AppColors.muted,
-                size: 20,
-              ),
-              onTap: items[i].onTap,
-            ),
-            if (i < items.length - 1)
-              const Divider(height: 1, indent: 52, endIndent: 16),
+              if (i < items.length - 1)
+                const Divider(height: 1, indent: 52, endIndent: 16),
+            ],
           ],
-        ],
+        ),
       ),
     );
 
@@ -6834,7 +7516,7 @@ class AccountScreen extends StatelessWidget {
                 onPressed: () => showPrototypeNotice(
                   c,
                   'Pengaturan Akun',
-                  'Pengaturan profil tersedia dalam mode demo.',
+                  'Pengaturan profil tersedia dalam mode prototipe.',
                 ),
                 icon: const Icon(
                   Icons.settings_outlined,
@@ -7002,7 +7684,7 @@ class CheckoutScreen extends StatelessWidget {
                             ),
                           );
                         },
-                  child: const Text('Buat Pesanan Demo'),
+                  child: const Text('Buat Pesanan'),
                 ),
               ],
             ),
@@ -7294,7 +7976,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 6),
                 Text(
-                  'Pesanan demo tersimpan lokal. Tidak ada pembayaran atau pengiriman yang dilakukan.',
+                  'Pesanan tersimpan lokal. Tidak ada pembayaran atau pengiriman yang dilakukan.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.muted),
                 ),
