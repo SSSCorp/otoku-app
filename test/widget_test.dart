@@ -131,6 +131,35 @@ void main() {
     );
   });
 
+  testWidgets('Opening Peta from vehicle detail keeps the tab bar', (
+    tester,
+  ) async {
+    await launchToHome(tester);
+    await reveal(tester, find.text('Honda Beat 2021'));
+    await tester.tap(find.text('Honda Beat 2021'));
+    await tester.pumpAndSettle();
+    await reveal(tester, find.text('Jadwalkan Servis'));
+    await tester.tap(find.text('Jadwalkan Servis'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Peta & Tempat'), findsOneWidget);
+    expect(find.text('Bengkel Jaya Motor'), findsOneWidget);
+    expect(find.text('Pesanan'), findsOneWidget);
+    expect(find.text('Akun'), findsOneWidget);
+  });
+
+  testWidgets('Home search opens the Shop tab with navigation intact', (
+    tester,
+  ) async {
+    await launchToHome(tester);
+    await tester.tap(find.text('Cari sparepart, bengkel, atau layanan...'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Produk (6)'), findsOneWidget);
+    expect(find.text('Peta'), findsOneWidget);
+    expect(find.text('Akun'), findsOneWidget);
+  });
+
   testWidgets(
     'Map category filters show local SPBU results without a map key',
     (tester) async {

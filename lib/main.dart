@@ -389,6 +389,13 @@ class OtoKuApp extends StatefulWidget {
 
 class _OtoKuAppState extends State<OtoKuApp> {
   late final state = OtoKuState(repository: widget.repository);
+
+  @override
+  void initState() {
+    super.initState();
+    appTabIndex.value = 0;
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: state,
@@ -791,6 +798,25 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int index = 0;
   final pages = const ['Home', 'Shop', 'Peta', 'Pesanan', 'Akun'];
+
+  @override
+  void initState() {
+    super.initState();
+    index = appTabIndex.value;
+    appTabIndex.addListener(_syncTab);
+  }
+
+  void _syncTab() {
+    if (!mounted || index == appTabIndex.value) return;
+    setState(() => index = appTabIndex.value);
+  }
+
+  @override
+  void dispose() {
+    appTabIndex.removeListener(_syncTab);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = [
@@ -804,7 +830,10 @@ class _AppShellState extends State<AppShell> {
       body: body,
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) => setState(() => index = i),
+        onDestinationSelected: (i) {
+          appTabIndex.value = i;
+          setState(() => index = i);
+        },
         height: 72,
         destinations: const [
           NavigationDestination(
@@ -1365,7 +1394,7 @@ class HomeScreen extends StatelessWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 GestureDetector(
-                  onTap: () => push(context, CatalogScreen(state: state)),
+                  onTap: () => openTab(context, 1),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -1563,7 +1592,7 @@ class _LockedObdCardState extends State<LockedObdCard> {
               body: 'Sparepart & layanan yang sesuai',
               action: 'Buka',
               icon: Icons.shopping_bag_outlined,
-              onTap: () => push(context, CatalogScreen(state: widget.state)),
+              onTap: () => openTab(context, 1),
             ),
           ],
         ),
@@ -2071,6 +2100,16 @@ class StatusChip extends StatelessWidget {
 
 void push(BuildContext context, Widget page) =>
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+/// Selected bottom-navigation tab, shared so pushed screens can hand control
+/// back to the tab shell instead of opening a full-screen copy without tabs.
+final appTabIndex = ValueNotifier<int>(0);
+
+void openTab(BuildContext context, int index) {
+  appTabIndex.value = index;
+  Navigator.of(context).popUntil((route) => route.isFirst);
+}
+
 void showObdSheet(BuildContext context, OtoKuState state) =>
     showModalBottomSheet(
       context: context,
@@ -2607,7 +2646,7 @@ class VehicleDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: () => push(context, WorkshopListScreen(state: state)),
+            onPressed: () => openTab(context, 2),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(52),
             ),
