@@ -28,7 +28,17 @@ illustrated demo preview.
    `com.google.android.geo.API_KEY` (environment variable of the same name also
    works). Restrict the key to the app's package name and SHA-1 before release.
 
-Place coordinates in the seed data are demo values around Bekasi Utara.
+Place coordinates in the seed data are demo values around BINUS Bekasi.
+
+Troubleshooting a blank map on Android (check `adb logcat | grep "Maps SDK"`):
+
+- `Authorization failure` / `Error requesting API token` — the key is present but
+  rejected. Enable **billing** on the Cloud project, enable **Maps SDK for
+  Android**, and restrict the key to package `com.example.otoku` plus your
+  signing SHA-1 (`keytool -list -v -keystore ~/.android/debug.keystore -alias
+  androiddebugkey -storepass android` for debug builds).
+- Desktop/web keep the illustrated preview: `google_maps_flutter` has no
+  Linux/macOS/Windows renderer.
 
 ## Local-first behavior
 
