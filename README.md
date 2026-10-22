@@ -13,9 +13,16 @@ flutter test
 
 ## Google Maps
 
-The Peta screen goes through a `MapProvider` abstraction: on Android/iOS with a
-key present it renders a real `GoogleMap`, everywhere else it keeps the
-illustrated demo preview.
+The Peta screen goes through a `MapProvider` abstraction with three
+implementations:
+
+| `MAP_PROVIDER` | Renderer | Notes |
+| --- | --- | --- |
+| `osm` (default) | OpenStreetMap tiles via `flutter_map` | Works on every platform, no key. Attribution shown; tile use/caching must be reviewed before production. |
+| `google` | `GoogleMap` | Android/iOS only; needs billing + Maps SDK + a restricted key. |
+| `illustrated` | Offline illustrated preview | No network needed, demo only. |
+
+Set `MAP_PROVIDER` in `.env` to switch. Google Maps needs a key present too.
 
 1. Copy the template and fill in your key (`.env` is gitignored):
 

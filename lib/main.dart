@@ -5,7 +5,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart' as fmap;
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -5128,7 +5130,11 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
 }
 
 /// Map anchor used for the first camera position and demo framing.
-const defaultMapCenter = LatLng(-6.2196, 106.9995); // BINUS Bekasi
+const defaultMapLat = -6.2196; // BINUS Bekasi
+const defaultMapLng = 106.9995;
+gmaps.LatLng get googleMapCenter =>
+    const gmaps.LatLng(defaultMapLat, defaultMapLng);
+ll.LatLng get osmMapCenter => const ll.LatLng(defaultMapLat, defaultMapLng);
 
 /// Boundary between the Peta UI and a map SDK (PRD §3), so Google Maps can be
 /// swapped without rewriting screens.
@@ -5154,7 +5160,23 @@ class GoogleMapsProvider implements MapProvider {
   }) => GoogleMapView(places: places, onOpen: onOpen);
 }
 
-/// Illustrated fallback for desktop, web, and key-less builds.
+/// Real OpenStreetMap tiles. Works on every platform and needs no key, so the
+/// prototype stays usable while the Google Maps key/billing is being sorted out.
+/// Tile use, attribution, and caching must be reviewed before production.
+class OsmMapProvider implements MapProvider {
+  const OsmMapProvider();
+
+  @override
+  bool get isLive => true;
+
+  @override
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  }) => OsmMapView(places: places, onOpen: onOpen);
+}
+
+/// Pure illustration, kept for offline demos (`MAP_PROVIDER=illustrated`).
 class IllustratedMapProvider implements MapProvider {
   const IllustratedMapProvider();
 
@@ -5168,17 +5190,150 @@ class IllustratedMapProvider implements MapProvider {
   }) => DemoMapPreview(places: places, onOpen: onOpen);
 }
 
+/// `MAP_PROVIDER` in `.env` overrides selection: `google`, `osm`, `illustrated`.
 MapProvider resolveMapProvider() {
-  if (kIsWeb) return const IllustratedMapProvider();
-  final mobile =
-      defaultTargetPlatform == TargetPlatform.android ||
-      defaultTargetPlatform == TargetPlatform.iOS;
-  final key = dotenv.isInitialized
-      ? (dotenv.maybeGet('GOOGLE_MAPS_API_KEY') ?? '').trim()
+  final override = dotenv.isInitialized
+      ? (dotenv.maybeGet('MAP_PROVIDER') ?? '').trim().toLowerCase()
       : '';
-  return mobile && key.isNotEmpty
-      ? const GoogleMapsProvider()
-      : const IllustratedMapProvider();
+  if (override == 'illustrated') return const IllustratedMapProvider();
+  if (override == 'google') return const GoogleMapsProvider();
+  if (override == 'osm') return const OsmMapProvider();
+
+  // Default to OSM tiles: they render on every platform without a key or
+  // billing. Once Google Maps billing is active, set MAP_PROVIDER=google.
+  return const OsmMapProvider();
+}
+
+class OsmMapView extends StatefulWidget {
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const OsmMapView({super.key, required this.places, required this.onOpen});
+
+  @override
+  State<OsmMapView> createState() => _OsmMapViewState();
+}
+
+class _OsmMapViewState extends State<OsmMapView> {
+  final fmap.MapController _controller = fmap.MapController();
+
+  void _recenter() => _controller.move(osmMapCenter, 15);
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(22),
+    child: SizedBox(
+      height: 230,
+      child: Stack(
+        children: [
+          fmap.FlutterMap(
+            mapController: _controller,
+            options: const fmap.MapOptions(
+              initialCenter: ll.LatLng(defaultMapLat, defaultMapLng),
+              initialZoom: 15,
+              minZoom: 4,
+              maxZoom: 18,
+              interactionOptions: fmap.InteractionOptions(
+                flags: fmap.InteractiveFlag.all & ~fmap.InteractiveFlag.rotate,
+              ),
+            ),
+            children: [
+              fmap.TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.otoku',
+                maxNativeZoom: 19,
+              ),
+              fmap.MarkerLayer(
+                markers: [
+                  fmap.Marker(
+                    point: osmMapCenter,
+                    width: 74,
+                    height: 44,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: AppColors.ink,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.school,
+                            color: Colors.white,
+                            size: 13,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .92),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'BINUS',
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  for (final place in widget.places)
+                    fmap.Marker(
+                      point: ll.LatLng(place.lat, place.lng),
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.topCenter,
+                      child: GestureDetector(
+                        onTap: () => widget.onOpen(place),
+                        child: Icon(
+                          Icons.location_on,
+                          color: place.partner ? AppColors.red : AppColors.ink,
+                          size: place.partner ? 34 : 30,
+                          semanticLabel: place.name,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const fmap.RichAttributionWidget(
+                alignment: fmap.AttributionAlignment.bottomLeft,
+                attributions: [
+                  fmap.TextSourceAttribution('OpenStreetMap contributors'),
+                ],
+              ),
+            ],
+          ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: IconButton(
+                tooltip: 'Pusatkan peta',
+                onPressed: _recenter,
+                icon: const Icon(
+                  Icons.my_location,
+                  color: AppColors.ink,
+                  size: 19,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Chooses a map implementation once per screen and keeps it for the session.
@@ -5209,14 +5364,16 @@ class GoogleMapView extends StatefulWidget {
 }
 
 class _GoogleMapViewState extends State<GoogleMapView> {
-  GoogleMapController? _controller;
+  gmaps.GoogleMapController? _controller;
 
-  LatLng get _center => defaultMapCenter;
+  gmaps.LatLng get _center => googleMapCenter;
 
   Future<void> _recenter() async {
     final controller = _controller;
     if (controller == null) return;
-    await controller.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
+    await controller.animateCamera(
+      gmaps.CameraUpdate.newLatLngZoom(_center, 15),
+    );
   }
 
   @override
@@ -5226,15 +5383,18 @@ class _GoogleMapViewState extends State<GoogleMapView> {
       height: 230,
       child: Stack(
         children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(target: _center, zoom: 15),
+          gmaps.GoogleMap(
+            initialCameraPosition: gmaps.CameraPosition(
+              target: _center,
+              zoom: 15,
+            ),
             markers: widget.places
                 .map(
-                  (place) => Marker(
-                    markerId: MarkerId(place.name),
-                    position: LatLng(place.lat, place.lng),
+                  (place) => gmaps.Marker(
+                    markerId: gmaps.MarkerId(place.name),
+                    position: gmaps.LatLng(place.lat, place.lng),
                     onTap: () => widget.onOpen(place),
-                    infoWindow: InfoWindow(
+                    infoWindow: gmaps.InfoWindow(
                       title: place.name,
                       snippet: '${place.category} · ${place.distance}',
                     ),
@@ -5246,7 +5406,7 @@ class _GoogleMapViewState extends State<GoogleMapView> {
             mapToolbarEnabled: false,
             zoomControlsEnabled: true,
             compassEnabled: true,
-            mapType: MapType.normal,
+            mapType: gmaps.MapType.normal,
           ),
           Positioned(
             right: 12,
@@ -5284,8 +5444,8 @@ class DemoMapPreview extends StatelessWidget {
   /// Places demo pins by their relative coordinates, framed around BINUS.
   ({List<(Workshop, double, double)> places, double campX, double campY})
   _layout() {
-    final lats = [defaultMapCenter.latitude, ...places.map((p) => p.lat)];
-    final lngs = [defaultMapCenter.longitude, ...places.map((p) => p.lng)];
+    final lats = [defaultMapLat, ...places.map((p) => p.lat)];
+    final lngs = [defaultMapLng, ...places.map((p) => p.lng)];
     final minLat = lats.reduce(math.min), maxLat = lats.reduce(math.max);
     final minLng = lngs.reduce(math.min), maxLng = lngs.reduce(math.max);
     final spanLat = maxLat - minLat;
@@ -5296,8 +5456,8 @@ class DemoMapPreview extends StatelessWidget {
       places: places
           .map((p) => (p, .12 + fx(p.lng) * .64, .26 + fy(p.lat) * .42))
           .toList(),
-      campX: .12 + fx(defaultMapCenter.longitude) * .64,
-      campY: .26 + fy(defaultMapCenter.latitude) * .42,
+      campX: .12 + fx(defaultMapLng) * .64,
+      campY: .26 + fy(defaultMapLat) * .42,
     );
   }
 

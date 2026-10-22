@@ -172,7 +172,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('SPBU Pertamina Demo'), findsOneWidget);
       expect(find.text('Bengkel Jaya Motor'), findsNothing);
-      expect(find.textContaining('Peta ilustrasi'), findsOneWidget);
+      expect(find.textContaining('OpenStreetMap'), findsOneWidget);
     },
   );
 
