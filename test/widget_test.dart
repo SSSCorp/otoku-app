@@ -55,8 +55,8 @@ void main() {
     tester,
   ) async {
     await launchToHome(tester);
-    await reveal(tester, find.text('+ Catat'));
-    await tester.tap(find.text('+ Catat'));
+    await reveal(tester, find.text('Catat aktivitas'));
+    await tester.tap(find.text('Catat aktivitas'));
     await tester.pumpAndSettle();
 
     expect(find.text('Catat Aktivitas'), findsOneWidget);
@@ -73,8 +73,8 @@ void main() {
     tester,
   ) async {
     await launchToHome(tester);
-    await reveal(tester, find.text('+ Catat'));
-    await tester.tap(find.text('+ Catat'));
+    await reveal(tester, find.text('Catat aktivitas'));
+    await tester.tap(find.text('Catat aktivitas'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('log-value')), '12000');
     await tester.tap(find.text('Simpan Catatan'));
@@ -91,8 +91,8 @@ void main() {
 
   testWidgets('Manual fuel logs appear in the vehicle summary', (tester) async {
     await launchToHome(tester);
-    await reveal(tester, find.text('+ Catat'));
-    await tester.tap(find.text('+ Catat'));
+    await reveal(tester, find.text('Catat aktivitas'));
+    await tester.tap(find.text('Catat aktivitas'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
@@ -103,7 +103,14 @@ void main() {
     await tester.tap(find.text('Simpan Catatan'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Isi Pertalite · Catatan terbaru'), findsOneWidget);
+    await reveal(tester, find.text('Honda Beat 2021'));
+    await tester.tap(find.text('Honda Beat 2021'));
+    await tester.pumpAndSettle();
+    await reveal(tester, find.text('Riwayat & Tracking'));
+    await tester.tap(find.text('Riwayat & Tracking'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Isi Pertalite'), findsOneWidget);
   });
 
   testWidgets('Home quick action explains trip tracking is not available yet', (

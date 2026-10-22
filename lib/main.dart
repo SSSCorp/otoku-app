@@ -1367,21 +1367,6 @@ class HomeScreen extends StatelessWidget {
                   ),
                   HealthSummary(state: state),
                 ],
-                const SizedBox(height: 18),
-                SectionTitle(
-                  'Catatan kendaraan',
-                  action: '+ Catat',
-                  onTap: () => push(context, ManualLogScreen(state: state)),
-                ),
-                CardBox(
-                  onTap: () => push(context, HistoryScreen(state: state)),
-                  child: Text(
-                    state.logs.isEmpty
-                        ? 'Belum ada catatan. Tambahkan kilometer, BBM, servis, atau biaya.'
-                        : '${state.logs.first['title']} · Catatan terbaru',
-                    style: const TextStyle(color: AppColors.muted),
-                  ),
-                ),
               ]),
             ),
           ),
