@@ -1326,10 +1326,13 @@ class HomeScreen extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _HomeQuickAction(
-                        icon: Icons.storefront_outlined,
-                        label: 'Cari bengkel',
-                        onTap: () =>
-                            push(context, WorkshopListScreen(state: state)),
+                        icon: Icons.route_outlined,
+                        label: 'Mulai Trip',
+                        onTap: () => showPrototypeNotice(
+                          context,
+                          'Mulai Trip',
+                          'Pelacakan GPS trip belum tersedia. OtoKu tidak akan merekam lokasi; kamu tetap bisa mencatat kilometer secara manual.',
+                        ),
                       ),
                     ),
                   ],
@@ -4330,178 +4333,185 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
   }).toList();
 
   @override
-  Widget build(BuildContext c) => SafeArea(
-    child: CustomScrollView(
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-          sliver: SliverToBoxAdapter(
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Peta & Tempat',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -.3,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Bekasi Utara · lokasi demo',
-                        style: TextStyle(fontSize: 11, color: AppColors.muted),
-                      ),
-                    ],
-                  ),
-                ),
-                const CircleAvatar(
-                  radius: 18,
-                  backgroundColor: AppColors.red,
-                  child: Text(
-                    'OK',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          sliver: SliverToBoxAdapter(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const DemoMapPreview(),
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  top: 12,
-                  child: Material(
-                    elevation: 3,
-                    shadowColor: AppColors.ink.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(14),
-                    child: TextField(
-                      onChanged: (value) => setState(() => query = value),
-                      decoration: InputDecoration(
-                        hintText: 'Cari bengkel, SPBU, minimarket...',
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: AppColors.muted,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 10,
-                        ),
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide.none,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 56,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-              scrollDirection: Axis.horizontal,
-              children:
-                  [
-                        'Semua',
-                        'Bengkel partner',
-                        'Bengkel non-partner',
-                        'Minimarket',
-                        'SPBU',
-                      ]
-                      .map(
-                        (value) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(value),
-                            selected: category == value,
-                            showCheckmark: false,
-                            onSelected: (_) => setState(() => category = value),
-                            backgroundColor: Colors.white,
-                            selectedColor: AppColors.redTint,
-                            labelStyle: TextStyle(
-                              color: category == value
-                                  ? AppColors.red
-                                  : AppColors.muted,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11,
-                            ),
-                            side: BorderSide(
-                              color: category == value
-                                  ? AppColors.red.withValues(alpha: .25)
-                                  : AppColors.border,
-                            ),
-                            shape: const StadiumBorder(),
+  Widget build(BuildContext c) => Material(
+    color: AppColors.bg,
+    child: SafeArea(
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Peta & Tempat',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -.3,
                           ),
                         ),
-                      )
-                      .toList(),
-            ),
-          ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-          sliver: SliverList.list(
-            children: [
-              Row(
-                children: [
-                  Text(
-                    '${filtered.length} tempat',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
+                        SizedBox(height: 2),
+                        Text(
+                          'Bekasi Utara · lokasi demo',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const Spacer(),
-                  const Text(
-                    'Area Bekasi & Sekitarnya',
-                    style: TextStyle(fontSize: 11, color: AppColors.muted),
+                  const CircleAvatar(
+                    radius: 18,
+                    backgroundColor: AppColors.red,
+                    child: Text(
+                      'OK',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              if (filtered.isEmpty)
-                const CardBox(
-                  child: Text('Tempat tidak ditemukan. Coba filter lain.'),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const DemoMapPreview(),
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    top: 12,
+                    child: Material(
+                      elevation: 3,
+                      shadowColor: AppColors.ink.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(14),
+                      child: TextField(
+                        onChanged: (value) => setState(() => query = value),
+                        decoration: InputDecoration(
+                          hintText: 'Cari bengkel, SPBU, minimarket...',
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: AppColors.muted,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide.none,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 56,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                scrollDirection: Axis.horizontal,
+                children:
+                    [
+                          'Semua',
+                          'Bengkel partner',
+                          'Bengkel non-partner',
+                          'Minimarket',
+                          'SPBU',
+                        ]
+                        .map(
+                          (value) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(value),
+                              selected: category == value,
+                              showCheckmark: false,
+                              onSelected: (_) =>
+                                  setState(() => category = value),
+                              backgroundColor: Colors.white,
+                              selectedColor: AppColors.redTint,
+                              labelStyle: TextStyle(
+                                color: category == value
+                                    ? AppColors.red
+                                    : AppColors.muted,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                              side: BorderSide(
+                                color: category == value
+                                    ? AppColors.red.withValues(alpha: .25)
+                                    : AppColors.border,
+                              ),
+                              shape: const StadiumBorder(),
+                            ),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+            sliver: SliverList.list(
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '${filtered.length} tempat',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Text(
+                      'Area Bekasi & Sekitarnya',
+                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                    ),
+                  ],
                 ),
-              ...filtered.map(
-                (place) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: WorkshopCard(
-                    w: place,
-                    onTap: () => push(
-                      c,
-                      WorkshopDetailScreen(
-                        state: widget.state,
-                        workshop: place,
+                const SizedBox(height: 10),
+                if (filtered.isEmpty)
+                  const CardBox(
+                    child: Text('Tempat tidak ditemukan. Coba filter lain.'),
+                  ),
+                ...filtered.map(
+                  (place) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: WorkshopCard(
+                      w: place,
+                      onTap: () => push(
+                        c,
+                        WorkshopDetailScreen(
+                          state: widget.state,
+                          workshop: place,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 }

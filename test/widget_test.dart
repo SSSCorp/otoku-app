@@ -106,6 +106,24 @@ void main() {
     expect(find.text('Isi Pertalite · Catatan terbaru'), findsOneWidget);
   });
 
+  testWidgets('Home quick action explains trip tracking is not available yet', (
+    tester,
+  ) async {
+    await launchToHome(tester);
+    await reveal(tester, find.text('Mulai Trip'));
+    await tester.tap(find.text('Mulai Trip'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Pelacakan GPS trip belum tersedia.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('mencatat kilometer secara manual'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'Map category filters show local SPBU results without a map key',
     (tester) async {
