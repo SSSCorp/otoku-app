@@ -53,6 +53,65 @@ class AppColors {
   static const navy = Color(0xFF27272A);
 }
 
+class CareTask {
+  final String title;
+  final int firstDue, interval;
+  final IconData icon;
+  const CareTask({
+    required this.title,
+    required this.firstDue,
+    required this.interval,
+    required this.icon,
+  });
+}
+
+const careTasks = <CareTask>[
+  CareTask(
+    title: 'Ganti Oli Mesin',
+    firstDue: 14000,
+    interval: 4000,
+    icon: Icons.oil_barrel_outlined,
+  ),
+  CareTask(
+    title: 'Cek Kampas Rem',
+    firstDue: 15000,
+    interval: 5000,
+    icon: Icons.disc_full,
+  ),
+  CareTask(
+    title: 'Cek Filter Udara',
+    firstDue: 15000,
+    interval: 5000,
+    icon: Icons.filter_alt_outlined,
+  ),
+  CareTask(
+    title: 'Cek Busi',
+    firstDue: 17500,
+    interval: 8000,
+    icon: Icons.electrical_services,
+  ),
+  CareTask(
+    title: 'Ganti Oli Gear (CVT)',
+    firstDue: 17500,
+    interval: 8000,
+    icon: Icons.settings_outlined,
+  ),
+];
+
+/// Next due odometer for a recurring care task. Once the previous target is
+/// passed (or the task was completed), the goal rolls to the next interval.
+int nextCareDueKm({
+  required CareTask task,
+  required int currentKm,
+  int? doneAtKm,
+}) {
+  var due = (doneAtKm ?? (task.firstDue - task.interval)) + task.interval;
+  while (due <= currentKm) {
+    due += task.interval;
+  }
+  return due;
+}
+
 class Vehicle {
   final String id, brand, model, plate, type;
   final int year, mileage;
@@ -150,7 +209,10 @@ class OtoKuState extends ChangeNotifier {
   bool initialized = false;
   final logs = <Map<String, dynamic>>[];
   final bookings = <String>[];
-  final completedMaintenance = <String>{};
+
+  /// Care item -> odometer reading when it was last completed.
+  final Map<String, int> maintenanceDoneAt = {};
+  Set<String> get completedMaintenance => maintenanceDoneAt.keys.toSet();
 
   final List<Vehicle> vehicles = [
     Vehicle(
@@ -407,12 +469,22 @@ class OtoKuState extends ChangeNotifier {
       bookings
         ..clear()
         ..addAll((saved['bookings'] as List<dynamic>? ?? []).cast<String>());
-      completedMaintenance
+      maintenanceDoneAt
         ..clear()
-        ..addAll(
-          (saved['completedMaintenance'] as List<dynamic>? ?? [])
-              .cast<String>(),
-        );
+        ..addAll({
+          for (final entry
+              in (saved['maintenanceDoneAt'] as Map<dynamic, dynamic>? ??
+                      const {})
+                  .entries)
+            entry.key as String: (entry.value as num?)?.toInt() ?? 0,
+        });
+      if (maintenanceDoneAt.isEmpty) {
+        for (final title
+            in (saved['completedMaintenance'] as List<dynamic>? ?? [])
+                .cast<String>()) {
+          maintenanceDoneAt[title] = 0;
+        }
+      }
     }
     initialized = true;
     notifyListeners();
@@ -434,6 +506,7 @@ class OtoKuState extends ChangeNotifier {
     'orders': orders,
     'logs': logs,
     'bookings': bookings,
+    'maintenanceDoneAt': maintenanceDoneAt,
     'completedMaintenance': completedMaintenance.toList(),
   });
 
@@ -515,7 +588,7 @@ class OtoKuState extends ChangeNotifier {
   }
 
   Future<void> completeMaintenance(String title) async {
-    completedMaintenance.add(title);
+    maintenanceDoneAt[title] = vehicle.mileage;
     notifyListeners();
     await _persist();
   }
@@ -2218,7 +2291,26 @@ class MaintenanceCard extends StatelessWidget {
   const MaintenanceCard({super.key, required this.state, required this.onTap});
   @override
   Widget build(BuildContext context) {
-    final done = state.completedMaintenance.contains('Ganti Oli Mesin');
+    final current = state.vehicle.mileage;
+    // Soonest upcoming goal; a passed target has already rolled to the next
+    // interval, so this switches to whichever item is due first.
+    final upcoming =
+        careTasks
+            .map(
+              (task) => (
+                task,
+                nextCareDueKm(
+                  task: task,
+                  currentKm: current,
+                  doneAtKm: state.maintenanceDoneAt[task.title],
+                ),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.$2.compareTo(b.$2));
+    final (task, due) = upcoming.first;
+    final remaining = due - current;
+    final urgent = remaining <= 500;
     return CardBox(
       onTap: onTap,
       child: Row(
@@ -2227,12 +2319,12 @@ class MaintenanceCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: done ? AppColors.greenTint : AppColors.redTint,
+              color: urgent ? AppColors.redTint : AppColors.surfaceLow,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
-              Icons.oil_barrel_outlined,
-              color: done ? AppColors.green : AppColors.red,
+              task.icon,
+              color: urgent ? AppColors.red : AppColors.muted,
             ),
           ),
           const SizedBox(width: 12),
@@ -2242,25 +2334,23 @@ class MaintenanceCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Flexible(
+                    Flexible(
                       child: Text(
-                        'Ganti Oli Mesin',
+                        task.title,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
                     const SizedBox(width: 8),
                     StatusChip(
-                      done ? 'Selesai' : 'Segera',
-                      done ? AppColors.green : AppColors.red,
+                      urgent ? 'Segera' : 'Terjadwal',
+                      urgent ? AppColors.red : AppColors.muted,
                     ),
                   ],
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  done
-                      ? 'Ditandai selesai oleh kamu'
-                      : 'Estimasi target: ${formatKilometers((14000 - state.vehicle.mileage).clamp(0, 14000))} km lagi',
+                  '${formatKilometers(remaining)} km lagi · target ${formatKilometers(due)} km',
                   style: const TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 2),
@@ -3846,24 +3936,27 @@ class MaintenanceScreen extends StatefulWidget {
 
 class _MaintenanceScreenState extends State<MaintenanceScreen> {
   String filter = 'Rekomendasi';
-  static const tasks = <({String title, int target, IconData icon})>[
-    (title: 'Ganti Oli Mesin', target: 14000, icon: Icons.oil_barrel_outlined),
-    (title: 'Cek Kampas Rem', target: 15000, icon: Icons.disc_full),
-    (title: 'Cek Filter Udara', target: 15000, icon: Icons.filter_alt_outlined),
-    (title: 'Cek Busi', target: 17500, icon: Icons.electrical_services),
-    (
-      title: 'Ganti Oli Gear (CVT)',
-      target: 17500,
-      icon: Icons.settings_outlined,
-    ),
-  ];
 
   @override
   Widget build(BuildContext context) {
     final current = widget.state.vehicle.mileage;
-    final visible = tasks.where((task) {
-      final done = widget.state.completedMaintenance.contains(task.title);
-      return filter == 'Semua' || (filter == 'Selesai' ? done : !done);
+    final tasks =
+        careTasks
+            .map(
+              (task) => (
+                task,
+                nextCareDueKm(
+                  task: task,
+                  currentKm: current,
+                  doneAtKm: widget.state.maintenanceDoneAt[task.title],
+                ),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.$2.compareTo(b.$2));
+    final visible = tasks.where((entry) {
+      final done = widget.state.maintenanceDoneAt.containsKey(entry.$1.title);
+      return filter == 'Semua' || (filter == 'Selesai' ? done : true);
     }).toList();
     return Page(
       title: 'Jadwal Perawatan',
@@ -3893,12 +3986,11 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
               const CardBox(
                 child: Text('Belum ada perawatan pada filter ini.'),
               ),
-            ...visible.map((task) {
-              final done = widget.state.completedMaintenance.contains(
-                task.title,
-              );
-              final remaining = task.target - current;
-              final progress = (current / task.target)
+            ...visible.map((entry) {
+              final (task, due) = entry;
+              final doneAt = widget.state.maintenanceDoneAt[task.title];
+              final remaining = due - current;
+              final progress = (1 - remaining / task.interval)
                   .clamp(0.0, 1.0)
                   .toDouble();
               return CardBox(
@@ -3918,27 +4010,33 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                             style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                           Text(
-                            done
-                                ? 'Ditandai selesai oleh kamu'
-                                : remaining >= 0
-                                ? '${formatKilometers(remaining)} km lagi'
-                                : 'Terlewat ${formatKilometers(-remaining)} km',
+                            '${formatKilometers(remaining)} km lagi · tiap ${formatKilometers(task.interval)} km',
                             style: const TextStyle(
                               color: AppColors.muted,
                               fontSize: 12,
                             ),
                           ),
+                          if (doneAt != null && doneAt > 0)
+                            Text(
+                              'Terakhir dikerjakan di ${formatKilometers(doneAt)} km',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 11,
+                              ),
+                            ),
                           const SizedBox(height: 8),
                           LinearProgressIndicator(
                             value: progress,
                             minHeight: 6,
                             borderRadius: BorderRadius.circular(8),
-                            color: done ? AppColors.green : AppColors.red,
+                            color: remaining <= 500
+                                ? AppColors.red
+                                : AppColors.muted,
                             backgroundColor: AppColors.border,
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            '${formatKilometers(current)} / ${formatKilometers(task.target)} km',
+                            '${formatKilometers(current)} / ${formatKilometers(due)} km',
                             style: const TextStyle(
                               color: AppColors.muted,
                               fontSize: 11,
@@ -3948,13 +4046,12 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                       ),
                     ),
                     IconButton(
-                      tooltip: done ? 'Selesai' : 'Tandai selesai',
-                      onPressed: done
-                          ? null
-                          : () => widget.state.completeMaintenance(task.title),
-                      icon: Icon(
-                        done ? Icons.check_circle : Icons.check_circle_outline,
-                        color: done ? AppColors.green : AppColors.muted,
+                      tooltip: 'Tandai selesai',
+                      onPressed: () =>
+                          widget.state.completeMaintenance(task.title),
+                      icon: const Icon(
+                        Icons.check_circle_outline,
+                        color: AppColors.muted,
                       ),
                     ),
                   ],

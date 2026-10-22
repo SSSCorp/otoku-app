@@ -35,4 +35,40 @@ void main() {
       expect(restored.completedMaintenance, contains('Ganti Oli Mesin'));
     },
   );
+
+  test('care goals roll over to the next interval once passed', () {
+    final oil = careTasks.firstWhere((task) => task.title == 'Ganti Oli Mesin');
+
+    expect(nextCareDueKm(task: oil, currentKm: 13000), 14000);
+    expect(nextCareDueKm(task: oil, currentKm: 14000), 18000);
+    expect(nextCareDueKm(task: oil, currentKm: 15999), 18000);
+    expect(nextCareDueKm(task: oil, currentKm: 18000), 22000);
+    expect(nextCareDueKm(task: oil, currentKm: 15000, doneAtKm: 15500), 19500);
+  });
+
+  test(
+    'completing a care goal records the odometer for the next interval',
+    () async {
+      final repository = MemoryOtoKuRepository(onboardingComplete: true);
+      final state = OtoKuState(repository: repository);
+      await state.restore();
+
+      await state.updateMileage(14200);
+      await state.completeMaintenance('Ganti Oli Mesin');
+
+      expect(state.maintenanceDoneAt['Ganti Oli Mesin'], 14200);
+
+      final oil = careTasks.firstWhere(
+        (task) => task.title == 'Ganti Oli Mesin',
+      );
+      expect(
+        nextCareDueKm(
+          task: oil,
+          currentKm: state.vehicle.mileage,
+          doneAtKm: state.maintenanceDoneAt[oil.title],
+        ),
+        18200,
+      );
+    },
+  );
 }
