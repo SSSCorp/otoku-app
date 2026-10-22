@@ -31,16 +31,16 @@ String formatKilometers(int value) => value.toString().replaceAllMapped(
 );
 
 class AppColors {
-  static const red = Color(0xFFE21B23), redDark = Color(0xFFB81218);
-  static const ink = Color(0xFF151C27), muted = Color(0xFF575E70);
-  static const bg = Color(0xFFF9F9FF), border = Color(0xFFE7EAF3);
-  static const green = Color(0xFF008438), amber = Color(0xFFF59E0B);
-  static const redTint = Color(0xFFFDECEC), greenTint = Color(0xFFE6F6EA);
-  static const amberTint = Color(0xFFFEF3DC), darkSurface = Color(0xFF151C27);
-  // Cool blue-tinted surface containers (Stitch-inspired).
-  static const surfaceLow = Color(0xFFF0F3FF);
-  static const surfaceHigh = Color(0xFFE2E8F8);
-  static const navy = Color(0xFF2A313D);
+  static const red = Color(0xFFE11D48), redDark = Color(0xFFDC2626);
+  static const ink = Color(0xFF18181B), muted = Color(0xFF71717A);
+  static const bg = Color(0xFFF8F8F9), border = Color(0xFFE4E4E7);
+  static const green = Color(0xFF15803D), amber = Color(0xFFD97706);
+  static const redTint = Color(0xFFFFF1F2), greenTint = Color(0xFFDCFCE7);
+  static const amberTint = Color(0xFFFEF3C7), darkSurface = Color(0xFF18181B);
+  // Kinetic Precision warm-neutral surfaces.
+  static const surfaceLow = Color(0xFFF4F4F5);
+  static const surfaceHigh = Color(0xFFE4E4E7);
+  static const navy = Color(0xFF27272A);
 }
 
 class Vehicle {
@@ -407,21 +407,24 @@ class _OtoKuAppState extends State<OtoKuApp> {
         dividerColor: AppColors.border,
         textTheme: const TextTheme(
           headlineMedium: TextStyle(
+            fontFamily: 'Space Grotesk',
             fontSize: 24,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             letterSpacing: -.5,
             color: AppColors.ink,
           ),
           titleLarge: TextStyle(
+            fontFamily: 'Space Grotesk',
             fontSize: 20,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             letterSpacing: -.3,
             color: AppColors.ink,
           ),
           titleMedium: TextStyle(
+            fontFamily: 'Space Grotesk',
             fontSize: 16,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -.2,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -.1,
             color: AppColors.ink,
           ),
           bodyMedium: TextStyle(color: AppColors.ink, height: 1.35),
@@ -487,9 +490,9 @@ class _OtoKuAppState extends State<OtoKuApp> {
   );
 }
 
-/// Subtle card shadow used across white surfaces.
+/// Warm ambient shadow from the Kinetic Precision layer-1 cards.
 const _cardShadow = [
-  BoxShadow(color: Color(0x14101828), blurRadius: 18, offset: Offset(0, 5)),
+  BoxShadow(color: Color(0x0A18181B), blurRadius: 8, offset: Offset(0, 2)),
 ];
 
 class SplashScreen extends StatefulWidget {
@@ -946,9 +949,9 @@ class HomeVehicleCard extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFFF0F3FF),
-                              Color(0xFFE2E8F8),
-                              Color(0xFFDCE2F3),
+                              Color(0xFFFAFAFA),
+                              Color(0xFFF4F4F5),
+                              Color(0xFFE9E7EA),
                             ],
                           ),
                         ),
@@ -1447,105 +1450,107 @@ class _LockedObdCardState extends State<LockedObdCard> {
   }
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 192,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(16),
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [AppColors.navy, AppColors.darkSurface],
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: AppColors.red.withValues(alpha: .14),
-          blurRadius: 24,
-          offset: const Offset(0, 6),
-        ),
-      ],
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Stack(
-      children: [
-        PageView(
+  Widget build(BuildContext context) => Column(
+    children: [
+      SizedBox(
+        height: 104,
+        child: PageView(
           controller: _controller,
           onPageChanged: (page) => setState(() => _page = page),
           children: [
             _ObdAdSlide(
-              eyebrow: 'FITUR OtoKu',
-              title: 'Coba simulasi OBD',
-              body: 'Contoh data kendaraan — OBD belum terhubung.',
-              action: 'Lihat demo OBD',
-              icon: Icons.memory_outlined,
+              badge: 'DEMO',
+              title: 'OtoKu OBD-II Scanner',
+              body: 'Diagnosa & cek voltase aki dari HP',
+              action: 'Lihat',
+              icon: Icons.bluetooth_searching,
               onTap: () => showObdSheet(context, widget.state),
             ),
             _ObdAdSlide(
-              eyebrow: 'LEBIH TERPANTAU',
-              title: 'Data mesin, lebih mudah dipahami',
-              body: 'Pantau RPM, suhu mesin, dan indikasi masalah dengan bahasa sederhana.',
-              action: 'Coba simulasi',
+              badge: 'SIMULASI',
+              title: 'Data mesin lebih jelas',
+              body: 'RPM, suhu mesin & kode masalah',
+              action: 'Coba',
               icon: Icons.insights_outlined,
               onTap: () => showObdSheet(context, widget.state),
             ),
             _ObdAdSlide(
-              eyebrow: 'LENGKAPI PERAWATAN',
-              title: 'Perawatan kendaraan lebih mudah',
-              body: 'Temukan suku cadang dan layanan yang sesuai untuk kendaraanmu.',
-              action: 'Buka Shop',
+              badge: 'SHOP',
+              title: 'Lengkapi perawatan',
+              body: 'Sparepart & layanan yang sesuai',
+              action: 'Buka',
               icon: Icons.shopping_bag_outlined,
               onTap: () => push(context, CatalogScreen(state: widget.state)),
             ),
           ],
         ),
-        Positioned(
-          left: 18,
-          bottom: 12,
-          child: Row(
-            children: [
-              ...List.generate(
-                3,
-                (index) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.only(right: 5),
-                  width: index == _page ? 16 : 5,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: index == _page ? AppColors.red : Colors.white38,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Geser untuk melihat',
-                style: TextStyle(color: Colors.white60, fontSize: 10),
-              ),
-            ],
+      ),
+      const SizedBox(height: 8),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(
+          3,
+          (index) => AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.only(right: 6),
+            width: index == _page ? 16 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: index == _page ? AppColors.red : AppColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(4),
+            ),
           ),
         ),
-      ],
-    ),
+      ),
+    ],
   );
 }
 
 class _ObdAdSlide extends StatelessWidget {
-  final String eyebrow, title, body, action;
-  final IconData? icon;
+  final String badge, title, body, action;
+  final IconData icon;
   final VoidCallback onTap;
   const _ObdAdSlide({
-    required this.eyebrow,
+    required this.badge,
     required this.title,
     required this.body,
     required this.action,
+    required this.icon,
     required this.onTap,
-    this.icon,
   });
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 16, 18, 26),
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      gradient: const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [Color(0xFF18181B), Color(0xFF27272A)],
+      ),
+      border: Border.all(color: const Color(0xFF3F3F46)),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x1418181B),
+          blurRadius: 8,
+          offset: Offset(0, 2),
+        ),
+      ],
+    ),
     child: Row(
       children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: .10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: .15)),
+          ),
+          child: Icon(icon, color: const Color(0xFF34D399), size: 20),
+        ),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1553,82 +1558,76 @@ class _ObdAdSlide extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(icon, color: AppColors.red, size: 18),
-                  const SizedBox(width: 7),
-                  Text(
-                    eyebrow,
-                    style: const TextStyle(
-                      color: AppColors.red,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: .7,
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        height: 1.15,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.redDark,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      badge,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 2),
               Text(
                 body,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 9),
-              InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        action,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      const Icon(
-                        Icons.arrow_forward,
-                        color: AppColors.red,
-                        size: 15,
-                      ),
-                    ],
-                  ),
-                ),
+                style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 11),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        Container(
-          width: 58,
-          height: 58,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: .08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: .08)),
+        const SizedBox(width: 8),
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: .20)),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  action,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_forward, color: Colors.white, size: 13),
+              ],
+            ),
           ),
-          child: Icon(icon ?? Icons.memory, color: Colors.white70, size: 28),
         ),
       ],
     ),
@@ -2197,123 +2196,504 @@ class VehicleDetailScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CardBox(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F1EF),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child:
-                      state.vehicle.brand == 'Honda' &&
-                          state.vehicle.model.toLowerCase().contains('beat')
-                      ? const VehiclePhoto(height: 190, detail: true)
-                      : const VehicleIllustration(height: 190),
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    state.vehicle.name,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                Stack(
+                  children: [
+                    Container(
+                      height: 190,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLow,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child:
+                          state.vehicle.brand == 'Honda' &&
+                              state.vehicle.model.toLowerCase().contains('beat')
+                          ? const VehiclePhoto(height: 190, detail: true)
+                          : const VehicleIllustration(height: 190),
                     ),
-                  ),
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .90),
+                          shape: BoxShape.circle,
+                          boxShadow: _cardShadow,
+                        ),
+                        child: const Icon(
+                          Icons.zoom_in,
+                          size: 18,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 10,
+                      left: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .95),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'KENDARAAN UTAMA',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: .7,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    state.vehicle.plate,
-                    style: const TextStyle(color: AppColors.muted),
-                  ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            state.vehicle.name,
+                            style: const TextStyle(
+                              fontFamily: 'Space Grotesk',
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -.4,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${state.vehicle.type} · Data kendaraan lokal',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.ink,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        state.vehicle.plate,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Space Grotesk',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _VehiclePill(
+                      label: 'JARAK TEMPUH',
+                      value: formatKilometers(state.vehicle.mileage),
+                      unit: 'Kilometer',
+                    ),
+                    const SizedBox(width: 6),
+                    _VehiclePill(
+                      label: 'TAHUN',
+                      value: '${state.vehicle.year}',
+                      unit: 'Registrasi',
+                    ),
+                    const SizedBox(width: 6),
+                    _VehiclePill(
+                      label: 'VARIAN',
+                      value: state.vehicle.type,
+                      unit: 'Pabrikan',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          CardBox(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'SPESIFIKASI UNIT',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.two_wheeler, size: 19, color: AppColors.muted),
+                  ],
+                ),
+                const SizedBox(height: 4),
                 ...[
                   ['Merek', state.vehicle.brand],
                   ['Model', state.vehicle.model],
-                  ['Tahun', '${state.vehicle.year}'],
-                  ['Tipe', state.vehicle.type],
-                  [
-                    'Kilometer',
-                    '${formatKilometers(state.vehicle.mileage)} km',
-                  ],
-                ].map((x) => InfoRow(x[0], x[1])),
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Data kendaraan disimpan lokal pada perangkat ini.',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
+                  ['Tahun Pembuatan', '${state.vehicle.year}'],
+                  ['Tipe Varian', state.vehicle.type],
+                  ['Nomor Registrasi (Plat)', state.vehicle.plate],
+                ].map(
+                  (row) => Container(
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: AppColors.surfaceHigh),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            row[0],
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          row[1],
+                          style: TextStyle(
+                            fontFamily: 'Space Grotesk',
+                            fontSize: 13,
+                            fontWeight: row[0].startsWith('Nomor')
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                            letterSpacing: row[0].startsWith('Nomor') ? 1 : 0,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F1EF),
+                    color: AppColors.surfaceLow,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    state.vehicle.plate,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.verified_user_outlined,
+                        color: AppColors.red,
+                        size: 19,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Data tersimpan lokal',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Spesifikasi dari katalog demo. OBD belum tersinkronisasi ke akun.',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 11,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          SectionTitle('Aktivitas kendaraan'),
-          ...[
-            [
-              'Riwayat & Tracking',
-              Icons.timeline,
-              () => push(context, HistoryScreen(state: state)),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Aktivitas & Fitur Kendaraan',
+                  style: TextStyle(
+                    fontFamily: 'Space Grotesk',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.2,
+                  ),
+                ),
+              ),
+              Text(
+                '4 MENU',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1,
+                ),
+              ),
             ],
-            [
-              'Jadwal Perawatan',
-              Icons.event_note,
-              () => push(context, MaintenanceScreen(state: state)),
-            ],
-            [
-              'Data OBD',
-              Icons.sensors,
-              () => state.obdConnected
-                  ? push(context, ObdScreen(state: state))
-                  : showObdSheet(context, state),
-            ],
-          ].map(
-            (x) => CardBox(
-              onTap: x[2] as VoidCallback,
-              child: Row(
+          ),
+          const SizedBox(height: 10),
+          _VehicleMenuTile(
+            icon: Icons.trending_up,
+            iconBg: AppColors.redTint,
+            iconColor: AppColors.red,
+            title: 'Riwayat & Tracking',
+            subtitle: 'Log servis, biaya bensin & catatan',
+            onTap: () => push(context, HistoryScreen(state: state)),
+          ),
+          const SizedBox(height: 8),
+          _VehicleMenuTile(
+            icon: Icons.calendar_month,
+            iconBg: const Color(0xFFFFEDD5),
+            iconColor: const Color(0xFFC2410C),
+            title: 'Jadwal Perawatan',
+            subtitle: 'Ganti oli & cek komponen berkala',
+            badge: 'Jatuh Tempo',
+            onTap: () => push(context, MaintenanceScreen(state: state)),
+          ),
+          const SizedBox(height: 8),
+          _VehicleMenuTile(
+            icon: Icons.sensors,
+            iconBg: const Color(0xFFD1FAE5),
+            iconColor: const Color(0xFF047857),
+            title: 'Data OBD & Telemetri',
+            subtitle: state.obdConnected
+                ? 'Simulasi OBD aktif · data demo'
+                : 'Belum terhubung · coba simulasi',
+            showDot: state.obdConnected,
+            onTap: () => state.obdConnected
+                ? push(context, ObdScreen(state: state))
+                : showObdSheet(context, state),
+          ),
+          const SizedBox(height: 8),
+          _VehicleMenuTile(
+            icon: Icons.edit_note,
+            iconBg: AppColors.surfaceHigh,
+            iconColor: AppColors.ink,
+            title: 'Ubah Data Kendaraan',
+            subtitle: 'Koreksi odometer, plat, atau nama',
+            onTap: () => push(context, VehicleEditScreen(state: state)),
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: () => push(context, WorkshopListScreen(state: state)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.build_circle_outlined, size: 19),
+            label: const Text('Jadwalkan Servis'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehiclePill extends StatelessWidget {
+  final String label, value, unit;
+  const _VehiclePill({
+    required this.label,
+    required this.value,
+    required this.unit,
+  });
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLow,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .6,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Space Grotesk',
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            unit,
+            style: const TextStyle(color: AppColors.muted, fontSize: 9),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehicleMenuTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconBg, iconColor;
+  final String title, subtitle;
+  final String? badge;
+  final bool showDot;
+  final VoidCallback onTap;
+  const _VehicleMenuTile({
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+    this.showDot = false,
+  });
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(12),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+          boxShadow: _cardShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(x[1] as IconData, color: AppColors.red),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      x[0] as String,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (showDot) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                      if (badge != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.redTint,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            badge!,
+                            style: const TextStyle(
+                              color: AppColors.red,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
                     ),
                   ),
-                  const Icon(Icons.chevron_right),
                 ],
               ),
             ),
-          ),
-          CardBox(
-            onTap: () => push(context, VehicleEditScreen(state: state)),
-            child: const ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.edit_outlined, color: AppColors.red),
-              title: Text('Ubah Data Kendaraan'),
-              trailing: Icon(Icons.chevron_right),
-            ),
-          ),
-        ],
+            const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
+          ],
+        ),
       ),
     ),
   );
@@ -3614,102 +3994,209 @@ class _CatalogState extends State<CatalogScreen> {
                             .toList(),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(16),
                     gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [AppColors.navy, AppColors.darkSurface],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [Color(0xFF18181B), Color(0xFF27272A)],
                     ),
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0x1F151C27),
-                        blurRadius: 16,
+                        color: Color(0x1418181B),
+                        blurRadius: 24,
                         offset: Offset(0, 6),
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: Stack(
                     children: [
-                      Expanded(
+                      Positioned(
+                        right: -24,
+                        bottom: -24,
+                        child: Container(
+                          width: 144,
+                          height: 144,
+                          decoration: BoxDecoration(
+                            color: AppColors.red.withValues(alpha: .25),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.red,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text(
-                                'FITUR OtoKu',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: .5,
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.red,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Text(
+                                    'UNGGULAN',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: .6,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: .10),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.bluetooth,
+                                        size: 12,
+                                        color: Color(0xFF34D399),
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Plug & Play BLE',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 10),
-                            const Text(
-                              'Pantau mesin lebih mudah',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Pantau Mesin Real-Time dengan OtoKu OBD-II',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.25,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Contoh data diagnostik di smartphone. Mode demo — belum membaca kendaraan.',
+                                        style: TextStyle(
+                                          color: Color(0xFFD4D4D8),
+                                          fontSize: 11,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: .10),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: .10,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.memory,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Jelajahi perangkat OBD dan contoh fitur diagnostik.',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton.icon(
-                              onPressed: () => showObdSheet(c, widget.state),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.zero,
-                              ),
-                              icon: const Text(
-                                'Lihat demo',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.only(top: 8),
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  top: BorderSide(color: Color(0x1AFFFFFF)),
                                 ),
                               ),
-                              label: const Icon(
-                                Icons.arrow_forward,
-                                size: 15,
-                                color: Color(0xFFFF7378),
+                              child: Row(
+                                children: [
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Contoh harga · demo',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Belum ada pembelian nyata',
+                                          style: TextStyle(
+                                            color: Color(0xFF34D399),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () =>
+                                        showObdSheet(c, widget.state),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppColors.red,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 9,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Text(
+                                      'Lihat Demo',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    label: const Icon(
+                                      Icons.shopping_bag_outlined,
+                                      size: 15,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: .1),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(
-                          Icons.memory,
-                          color: Colors.white70,
-                          size: 28,
                         ),
                       ),
                     ],

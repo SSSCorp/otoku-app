@@ -45,10 +45,10 @@ void main() {
     expect(find.text('Shop'), findsOneWidget);
     expect(find.text('Peta'), findsOneWidget);
     expect(find.text('Honda Beat 2021'), findsOneWidget);
-    await reveal(tester, find.text('Coba simulasi OBD'));
-    expect(find.text('Coba simulasi OBD'), findsOneWidget);
+    await reveal(tester, find.text('OtoKu OBD-II Scanner'));
+    expect(find.text('OtoKu OBD-II Scanner'), findsOneWidget);
     expect(find.text('Hubungkan OBD'), findsNothing);
-    expect(find.text('Lihat demo OBD'), findsOneWidget);
+    expect(find.text('Lihat'), findsOneWidget);
   });
 
   testWidgets('Manual mileage entry updates the vehicle odometer', (
@@ -239,13 +239,12 @@ void main() {
     tester,
   ) async {
     await launchToHome(tester);
-    await reveal(tester, find.text('Coba simulasi OBD'));
-    expect(find.text('Geser untuk melihat'), findsOneWidget);
+    await reveal(tester, find.text('OtoKu OBD-II Scanner'));
 
     await tester.pump(const Duration(seconds: 5));
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('Coba simulasi OBD'), findsOneWidget);
+    expect(find.text('OtoKu OBD-II Scanner'), findsOneWidget);
   });
 
   testWidgets('OBD demo clearly identifies simulated vehicle information', (
@@ -253,8 +252,8 @@ void main() {
   ) async {
     await launchToHome(tester);
 
-    await reveal(tester, find.text('Lihat demo OBD'));
-    await tester.tap(find.text('Lihat demo OBD'));
+    await reveal(tester, find.text('OtoKu OBD-II Scanner'));
+    await tester.tap(find.text('Lihat'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Lihat simulasi OBD'));
     await tester.pumpAndSettle();
