@@ -4358,13 +4358,15 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
                     ],
                   ),
                 ),
-                CircleIconButton(
-                  icon: Icons.my_location,
-                  onTap: () => ScaffoldMessenger.of(c).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Lokasi saat ini tidak tersedia di mode demo',
-                      ),
+                const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: AppColors.red,
+                  child: Text(
+                    'OK',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -4527,17 +4529,17 @@ class DemoMapPreview extends StatelessWidget {
         const Positioned.fill(child: CustomPaint(painter: DemoRoadPainter())),
         const Positioned(
           left: 40,
-          top: 40,
+          top: 72,
           child: Icon(Icons.location_on, color: AppColors.red, size: 32),
         ),
         const Positioned(
           right: 54,
-          top: 72,
+          top: 88,
           child: Icon(Icons.location_on, color: AppColors.ink, size: 28),
         ),
         const Positioned(
           left: 174,
-          top: 26,
+          top: 100,
           child: Icon(Icons.location_on, color: AppColors.ink, size: 26),
         ),
         Positioned(
@@ -4549,7 +4551,11 @@ class DemoMapPreview extends StatelessWidget {
             shape: const CircleBorder(),
             child: IconButton(
               tooltip: 'Pusatkan peta',
-              onPressed: () {},
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Lokasi saat ini tidak tersedia di mode demo'),
+                ),
+              ),
               icon: const Icon(
                 Icons.my_location,
                 color: AppColors.ink,
