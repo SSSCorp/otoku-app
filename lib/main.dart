@@ -398,13 +398,96 @@ class _OtoKuAppState extends State<OtoKuApp> {
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: AppColors.bg,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.red,
+        canvasColor: AppColors.bg,
+        colorScheme: const ColorScheme(
+          brightness: Brightness.light,
           primary: AppColors.red,
+          onPrimary: Colors.white,
+          primaryContainer: Color(0xFFFFE4E6),
+          onPrimaryContainer: Color(0xFF4C0519),
+          secondary: Color(0xFF52525B),
+          onSecondary: Colors.white,
+          secondaryContainer: Color(0xFFF4F4F5),
+          onSecondaryContainer: AppColors.ink,
+          tertiary: Color(0xFF3F3F46),
+          onTertiary: Colors.white,
+          tertiaryContainer: Color(0xFFF4F4F5),
+          onTertiaryContainer: AppColors.ink,
+          error: AppColors.redDark,
+          onError: Colors.white,
+          errorContainer: Color(0xFFFFF1F2),
+          onErrorContainer: Color(0xFF9F1239),
           surface: Colors.white,
+          onSurface: AppColors.ink,
+          onSurfaceVariant: Color(0xFF52525B),
+          surfaceContainerLowest: Colors.white,
+          surfaceContainerLow: AppColors.surfaceLow,
+          surfaceContainer: Color(0xFFEFEFF1),
+          surfaceContainerHigh: AppColors.surfaceHigh,
+          surfaceContainerHighest: Color(0xFFE9E9EB),
+          outline: Color(0xFFA1A1AA),
+          outlineVariant: AppColors.border,
+          inverseSurface: AppColors.ink,
+          onInverseSurface: Color(0xFFFAFAFA),
+          inversePrimary: Color(0xFFFDA4AF),
+          surfaceTint: AppColors.red,
+          shadow: Color(0xFF09090B),
+          scrim: Color(0xFF09090B),
         ),
         fontFamily: 'Plus Jakarta Sans',
         dividerColor: AppColors.border,
+        dialogTheme: DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          modalBackgroundColor: Colors.white,
+          modalBarrierColor: Color(0x9909090B),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: AppColors.ink,
+          contentTextStyle: const TextStyle(
+            color: Colors.white,
+            fontFamily: 'Plus Jakarta Sans',
+            fontSize: 13,
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: AppColors.surfaceLow,
+          selectedColor: AppColors.red,
+          side: BorderSide.none,
+          labelStyle: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          secondaryLabelStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          shape: const StadiumBorder(),
+        ),
+        tabBarTheme: const TabBarThemeData(
+          indicatorColor: AppColors.red,
+          labelColor: AppColors.red,
+          unselectedLabelColor: AppColors.muted,
+          dividerColor: AppColors.border,
+        ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: AppColors.red,
+          linearTrackColor: AppColors.surfaceHigh,
+          circularTrackColor: AppColors.surfaceHigh,
+        ),
         textTheme: const TextTheme(
           headlineMedium: TextStyle(
             fontFamily: 'Space Grotesk',
@@ -2740,7 +2823,7 @@ class VehiclePhoto extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFFF1F1EF),
+                  AppColors.surfaceLow,
                   Colors.white.withValues(alpha: .35),
                 ],
               ),
@@ -3519,7 +3602,7 @@ class TimelineGroup extends StatelessWidget {
                   color: today ? AppColors.red : const Color(0xFF9B9B96),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: today ? AppColors.redTint : const Color(0xFFE8E8E8),
+                    color: today ? AppColors.redTint : AppColors.surfaceHigh,
                     width: 3,
                   ),
                 ),
@@ -3527,7 +3610,7 @@ class TimelineGroup extends StatelessWidget {
               Container(
                 width: 1.5,
                 height: items.length > 1 ? 142 : 92,
-                color: const Color(0xFFE1E1DD),
+                color: AppColors.surfaceHigh,
               ),
             ],
           ),
@@ -3583,10 +3666,10 @@ class TimelineItem extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: const Color(0xFFF0F0EE),
+          color: AppColors.surfaceLow,
           borderRadius: BorderRadius.circular(9),
         ),
-        child: Icon(icon, color: const Color(0xFF5F605C), size: 18),
+        child: Icon(icon, color: AppColors.muted, size: 18),
       ),
       const SizedBox(width: 9),
       Expanded(
@@ -3790,7 +3873,7 @@ class HealthItem extends StatelessWidget {
   Widget build(BuildContext c) => ListTile(
     contentPadding: EdgeInsets.zero,
     leading: CircleAvatar(
-      backgroundColor: ok ? const Color(0xFFDDF5E3) : const Color(0xFFFFE6E6),
+      backgroundColor: ok ? AppColors.greenTint : AppColors.redTint,
       child: Icon(
         ok ? Icons.check : Icons.warning,
         color: ok ? AppColors.green : AppColors.red,
@@ -4608,7 +4691,7 @@ class ProductDetailScreen extends StatelessWidget {
                         Container(
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFECEDEA),
+                            color: AppColors.surfaceLow,
                             borderRadius: BorderRadius.circular(18),
                           ),
                           child: Padding(
