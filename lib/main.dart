@@ -101,11 +101,11 @@ class Workshop {
     this.distance,
     this.services, {
     this.category = 'Bengkel',
-    this.address = 'Bekasi Utara · lokasi demo',
+    this.address = 'BINUS Bekasi · lokasi demo',
     this.partner = false,
     this.bookingEnabled = false,
-    this.lat = -6.1325,
-    this.lng = 106.9950,
+    this.lat = -6.2196,
+    this.lng = 106.9995,
   });
 }
 
@@ -170,8 +170,8 @@ class OtoKuState extends ChangeNotifier {
       category: 'Bengkel',
       partner: true,
       bookingEnabled: true,
-      lat: -6.1282,
-      lng: 106.9891,
+      lat: -6.2262,
+      lng: 107.0065,
     ),
     Workshop(
       'AutoCare Plus',
@@ -179,8 +179,8 @@ class OtoKuState extends ChangeNotifier {
       '3.4 km (demo)',
       'Spesialis CVT · Rem · Oli',
       category: 'Bengkel',
-      lat: -6.1401,
-      lng: 107.0024,
+      lat: -6.2331,
+      lng: 106.9912,
     ),
     Workshop(
       'Speed Motor',
@@ -188,8 +188,8 @@ class OtoKuState extends ChangeNotifier {
       '4.2 km (demo)',
       'Servis Lengkap · Body Part',
       category: 'Bengkel',
-      lat: -6.1215,
-      lng: 107.0085,
+      lat: -6.2089,
+      lng: 107.0102,
     ),
     Workshop(
       'SPBU Pertamina Demo',
@@ -197,8 +197,8 @@ class OtoKuState extends ChangeNotifier {
       '1.8 km (demo)',
       'Bahan bakar · area Bekasi Utara',
       category: 'SPBU',
-      lat: -6.1359,
-      lng: 106.9923,
+      lat: -6.2131,
+      lng: 106.9881,
     ),
     Workshop(
       'Minimarket Demo',
@@ -206,8 +206,8 @@ class OtoKuState extends ChangeNotifier {
       '0.9 km (demo)',
       'Kebutuhan perjalanan · area Bekasi Utara',
       category: 'Minimarket',
-      lat: -6.1268,
-      lng: 107.0016,
+      lat: -6.2245,
+      lng: 106.9930,
     ),
   ];
   final cart = <Product>[];
@@ -4959,7 +4959,7 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Bekasi Utara · lokasi demo',
+                          'BINUS Bekasi · lokasi demo',
                           style: TextStyle(
                             fontSize: 11,
                             color: AppColors.muted,
@@ -5127,6 +5127,9 @@ class _WorkshopListScreenState extends State<WorkshopListScreen> {
   );
 }
 
+/// Map anchor used for the first camera position and demo framing.
+const defaultMapCenter = LatLng(-6.2196, 106.9995); // BINUS Bekasi
+
 /// Boundary between the Peta UI and a map SDK (PRD §3), so Google Maps can be
 /// swapped without rewriting screens.
 abstract interface class MapProvider {
@@ -5208,14 +5211,12 @@ class GoogleMapView extends StatefulWidget {
 class _GoogleMapViewState extends State<GoogleMapView> {
   GoogleMapController? _controller;
 
-  LatLng get _center => widget.places.isEmpty
-      ? const LatLng(-6.1325, 106.9950)
-      : LatLng(widget.places.first.lat, widget.places.first.lng);
+  LatLng get _center => defaultMapCenter;
 
   Future<void> _recenter() async {
     final controller = _controller;
     if (controller == null) return;
-    await controller.animateCamera(CameraUpdate.newLatLngZoom(_center, 14.5));
+    await controller.animateCamera(CameraUpdate.newLatLngZoom(_center, 15));
   }
 
   @override
@@ -5226,7 +5227,7 @@ class _GoogleMapViewState extends State<GoogleMapView> {
       child: Stack(
         children: [
           GoogleMap(
-            initialCameraPosition: CameraPosition(target: _center, zoom: 14),
+            initialCameraPosition: CameraPosition(target: _center, zoom: 15),
             markers: widget.places
                 .map(
                   (place) => Marker(
@@ -5280,24 +5281,24 @@ class DemoMapPreview extends StatelessWidget {
     required this.onOpen,
   });
 
-  /// Places the demo pins by their relative coordinates.
-  List<(Workshop, double, double)> _positions() {
-    if (places.isEmpty) return const [];
-    var minLat = places.first.lat, maxLat = places.first.lat;
-    var minLng = places.first.lng, maxLng = places.first.lng;
-    for (final place in places) {
-      minLat = math.min(minLat, place.lat);
-      maxLat = math.max(maxLat, place.lat);
-      minLng = math.min(minLng, place.lng);
-      maxLng = math.max(maxLng, place.lng);
-    }
+  /// Places demo pins by their relative coordinates, framed around BINUS.
+  ({List<(Workshop, double, double)> places, double campX, double campY})
+  _layout() {
+    final lats = [defaultMapCenter.latitude, ...places.map((p) => p.lat)];
+    final lngs = [defaultMapCenter.longitude, ...places.map((p) => p.lng)];
+    final minLat = lats.reduce(math.min), maxLat = lats.reduce(math.max);
+    final minLng = lngs.reduce(math.min), maxLng = lngs.reduce(math.max);
     final spanLat = maxLat - minLat;
     final spanLng = maxLng - minLng;
-    return places.map((place) {
-      final x = spanLng == 0 ? 0.5 : (place.lng - minLng) / spanLng;
-      final y = spanLat == 0 ? 0.5 : (maxLat - place.lat) / spanLat;
-      return (place, .12 + x * .62, .28 + y * .40);
-    }).toList();
+    double fx(double lng) => spanLng == 0 ? .5 : (lng - minLng) / spanLng;
+    double fy(double lat) => spanLat == 0 ? .5 : (maxLat - lat) / spanLat;
+    return (
+      places: places
+          .map((p) => (p, .12 + fx(p.lng) * .64, .26 + fy(p.lat) * .42))
+          .toList(),
+      campX: .12 + fx(defaultMapCenter.longitude) * .64,
+      campY: .26 + fy(defaultMapCenter.latitude) * .42,
+    );
   }
 
   @override
@@ -5316,69 +5317,117 @@ class DemoMapPreview extends StatelessWidget {
         ),
       ],
     ),
-    child: Stack(
-      children: [
-        const Positioned.fill(child: CustomPaint(painter: DemoRoadPainter())),
-        for (final (place, x, y) in _positions())
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: Align(
-              alignment: Alignment(x * 2 - 1, y * 2 - 1),
-              child: GestureDetector(
-                onTap: () => onOpen(place),
-                child: Icon(
-                  Icons.location_on,
-                  color: place.partner ? AppColors.red : AppColors.ink,
-                  size: place.partner ? 32 : 27,
+    child: Builder(
+      builder: (context) {
+        final layout = _layout();
+        return Stack(
+          children: [
+            const Positioned.fill(
+              child: CustomPaint(painter: DemoRoadPainter()),
+            ),
+            Align(
+              alignment: Alignment(layout.campX * 2 - 1, layout.campY * 2 - 1),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: AppColors.ink,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.school,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .9),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'BINUS',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (final (place, x, y) in layout.places)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: Align(
+                  alignment: Alignment(x * 2 - 1, y * 2 - 1),
+                  child: GestureDetector(
+                    onTap: () => onOpen(place),
+                    child: Icon(
+                      Icons.location_on,
+                      color: place.partner ? AppColors.red : AppColors.ink,
+                      size: place.partner ? 32 : 27,
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              right: 12,
+              bottom: 38,
+              child: Material(
+                color: Colors.white,
+                elevation: 2,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: 'Pusatkan peta',
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Lokasi saat ini tidak tersedia di mode demo',
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.my_location,
+                    color: AppColors.ink,
+                    size: 19,
+                  ),
                 ),
               ),
             ),
-          ),
-        Positioned(
-          right: 12,
-          bottom: 38,
-          child: Material(
-            color: Colors.white,
-            elevation: 2,
-            shape: const CircleBorder(),
-            child: IconButton(
-              tooltip: 'Pusatkan peta',
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Lokasi saat ini tidak tersedia di mode demo'),
+            Positioned(
+              left: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .94),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Peta ilustrasi · lokasi demo',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
                 ),
               ),
-              icon: const Icon(
-                Icons.my_location,
-                color: AppColors.ink,
-                size: 19,
-              ),
             ),
-          ),
-        ),
-        Positioned(
-          left: 10,
-          bottom: 10,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .94),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Peta ilustrasi · lokasi demo',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: AppColors.muted,
-              ),
-            ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     ),
   );
 }
