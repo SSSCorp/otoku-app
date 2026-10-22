@@ -4677,6 +4677,49 @@ class WorkshopCard extends StatelessWidget {
   );
 }
 
+class _PlaceAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _PlaceAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(color: Color(0x10151C27), blurRadius: 5),
+                ],
+              ),
+              child: Icon(icon, color: AppColors.red, size: 20),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class WorkshopDetailScreen extends StatelessWidget {
   final OtoKuState state;
   final Workshop workshop;
@@ -4708,44 +4751,214 @@ class WorkshopDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CardBox(
-            color: AppColors.ink,
-            child: SizedBox(
-              height: 150,
-              child: Center(
-                child: Icon(
-                  Icons.storefront_outlined,
-                  color: AppColors.red,
-                  size: 72,
-                ),
+          Container(
+            height: 230,
+            width: double.infinity,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.navy, Color(0xFF394558)],
               ),
             ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -35,
+                  top: -55,
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .08),
+                        width: 24,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 35,
+                  bottom: -90,
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .06),
+                        width: 18,
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Icon(
+                    workshop.category == 'Bengkel'
+                        ? Icons.storefront_outlined
+                        : workshop.category == 'SPBU'
+                        ? Icons.local_gas_station
+                        : Icons.storefront,
+                    color: Colors.white.withValues(alpha: .9),
+                    size: 86,
+                  ),
+                ),
+                Positioned(
+                  left: 14,
+                  top: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      workshop.partner ? 'MITRA OtoKu · DEMO' : 'TEMPAT · DEMO',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: .4,
+                      ),
+                    ),
+                  ),
+                ),
+                const Positioned(
+                  left: 12,
+                  bottom: 10,
+                  child: Text(
+                    'Foto tempat belum tersedia',
+                    style: TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
             workshop.name,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            style: const TextStyle(
+              fontSize: 23,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -.5,
+            ),
           ),
-          Text(
-            '${workshop.category} · ${workshop.distance}',
-            style: const TextStyle(color: AppColors.muted),
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              Text(
+                '${workshop.category} · ${workshop.distance}',
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+              const Spacer(),
+              StatusChip(
+                workshop.partner ? 'Partner demo' : 'Belum diverifikasi',
+                workshop.partner ? AppColors.green : AppColors.muted,
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           Text(
             workshop.partner
-                ? 'Partner OtoKu demo · lokasi dan layanan belum diverifikasi'
-                : 'Lokasi demo · alamat dan jam operasional belum diverifikasi',
-            style: const TextStyle(color: AppColors.muted),
+                ? 'Status mitra contoh; lokasi dan layanan belum diverifikasi.'
+                : 'Tempat non-partner; tidak didukung atau diverifikasi OtoKu.',
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              height: 1.4,
+            ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            workshop.address,
-            style: const TextStyle(color: AppColors.muted),
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_outlined,
+                size: 16,
+                color: AppColors.red,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  workshop.address,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLow,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                _PlaceAction(
+                  icon: Icons.directions_outlined,
+                  label: 'Rute',
+                  onTap: () => showPrototypeNotice(
+                    c,
+                    'Rute',
+                    'Navigasi peta belum tersedia pada demo.',
+                  ),
+                ),
+                _PlaceAction(
+                  icon: Icons.call_outlined,
+                  label: 'Hubungi',
+                  onTap: () => showPrototypeNotice(
+                    c,
+                    'Hubungi',
+                    'Nomor kontak tempat belum tersedia.',
+                  ),
+                ),
+                _PlaceAction(
+                  icon: Icons.bookmark_border,
+                  label: 'Simpan',
+                  onTap: () => ScaffoldMessenger.of(c).showSnackBar(
+                    const SnackBar(content: Text('Tempat disimpan dalam demo')),
+                  ),
+                ),
+                _PlaceAction(
+                  icon: Icons.share_outlined,
+                  label: 'Bagikan',
+                  onTap: () => showPrototypeNotice(
+                    c,
+                    'Bagikan',
+                    'Tautan tempat demo belum tersedia.',
+                  ),
+                ),
+              ],
+            ),
           ),
           if (workshop.category == 'Bengkel') ...[
-            const SectionTitle('Layanan contoh'),
-            const CardBox(
-              child: Text('Daftar layanan dan tarif belum dikonfirmasi.'),
+            const SectionTitle('Layanan populer'),
+            CardBox(
+              color: AppColors.surfaceLow,
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppColors.muted),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      workshop.partner
+                          ? 'Layanan dan tarif mitra belum dikonfirmasi.'
+                          : 'Bengkel non-partner tidak menyediakan booking di aplikasi.',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
@@ -4767,29 +4980,54 @@ class BookingServiceTile extends StatelessWidget {
     required this.onTap,
   });
   @override
-  Widget build(BuildContext context) => CardBox(
-    onTap: onTap,
-    child: Row(
-      children: [
-        const ProductArt(icon: 'oil'),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: selected ? AppColors.redTint.withValues(alpha: .45) : Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(
+        color: selected ? AppColors.red : AppColors.border,
+        width: selected ? 1.5 : 1,
+      ),
+      boxShadow: _cardShadow,
+    ),
+    child: Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text(
-                '$price · $duration',
-                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ProductArt(icon: 'oil', size: 52),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      '$price · $duration',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: selected ? AppColors.red : AppColors.muted,
               ),
             ],
           ),
         ),
-        Icon(
-          selected ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: selected ? AppColors.red : AppColors.muted,
-        ),
-      ],
+      ),
     ),
   );
 }
@@ -4863,8 +5101,6 @@ class _BookingState extends State<BookingScreen> {
   bool oilSelected = true, cvtSelected = false, submitting = false;
 
   DateTime get selectedDate => DateTime.now().add(Duration(days: day + 1));
-  String _dateLabel(DateTime date) =>
-      '${weekdays[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
 
   @override
   void dispose() {
@@ -4966,9 +5202,58 @@ class _BookingState extends State<BookingScreen> {
             runSpacing: 8,
             children: List.generate(5, (i) {
               final date = DateTime.now().add(Duration(days: i + 1));
+              final selected = day == i;
               return GestureDetector(
                 onTap: () => setState(() => day = i),
-                child: Pill(_dateLabel(date), active: day == i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 66,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: selected ? AppColors.red : Colors.white,
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(
+                      color: selected ? AppColors.red : AppColors.border,
+                    ),
+                    boxShadow: selected
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x1FE21B23),
+                              blurRadius: 9,
+                              offset: Offset(0, 3),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        weekdays[date.weekday - 1],
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: selected ? Colors.white70 : AppColors.muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${date.day}',
+                        style: TextStyle(
+                          fontSize: 17,
+                          color: selected ? Colors.white : AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        months[date.month - 1],
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: selected ? Colors.white70 : AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               );
             }),
           ),
