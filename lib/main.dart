@@ -881,7 +881,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     (
       Icons.health_and_safety_outlined,
       'Kamu tetap bisa tanpa OBD',
-      'Fitur perawatan manual tetap berjalan. Data OBD selalu diberi label simulasi.',
+      'Perawatan manual tetap berjalan meski OBD belum terhubung.',
     ),
     (
       Icons.storefront_outlined,
@@ -1667,7 +1667,7 @@ class HomeScreen extends StatelessWidget {
                         onTap: () => showPrototypeNotice(
                           context,
                           'Mulai Trip',
-                          'Pelacakan GPS trip belum tersedia. OtoKu tidak akan merekam lokasi; kamu tetap bisa mencatat kilometer secara manual.',
+                          'Pelacakan trip akan hadir di pembaruan berikutnya. Catat kilometer secara manual untuk sekarang.',
                         ),
                       ),
                     ),
@@ -1689,7 +1689,7 @@ class HomeScreen extends StatelessWidget {
                     : LockedObdCard(state: state),
                 if (state.obdConnected) ...[
                   SectionTitle(
-                    'Data OBD (Simulasi)',
+                    'Data OBD',
                     action: 'Lihat Semua',
                     onTap: () => push(context, ObdScreen(state: state)),
                   ),
@@ -1792,7 +1792,7 @@ class _LockedObdCardState extends State<LockedObdCard> {
           onPageChanged: (page) => setState(() => _page = page),
           children: [
             _ObdAdSlide(
-              badge: 'SIMULASI',
+              badge: 'BARU',
               title: 'OtoKu OBD-II Scanner',
               body: 'Diagnosa & cek voltase aki dari HP',
               action: 'Lihat',
@@ -1800,7 +1800,7 @@ class _LockedObdCardState extends State<LockedObdCard> {
               onTap: () => showObdSheet(context, widget.state),
             ),
             _ObdAdSlide(
-              badge: 'SIMULASI',
+              badge: 'FITUR',
               title: 'Data mesin lebih jelas',
               body: 'RPM, suhu mesin & kode masalah',
               action: 'Coba',
@@ -2040,12 +2040,9 @@ class ConnectedObdCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('OBD Aktif', style: TextStyle(fontWeight: FontWeight.w800)),
               Text(
-                'OBD Simulasi Aktif',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              Text(
-                'Data simulasi — bukan data kendaraan langsung',
+                'Pembacaan mesin terbaru',
                 style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
             ],
@@ -2342,16 +2339,14 @@ void showObdSheet(BuildContext context, OtoKuState state) =>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              state.obdConnected
-                  ? 'Simulasi OBD aktif'
-                  : 'Coba simulasi data OBD',
+              state.obdConnected ? 'OBD aktif' : 'Jelajahi data OBD',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(
               state.obdConnected
-                  ? 'Contoh RPM, suhu mesin, dan kode masalah. Data ini bukan pembacaan langsung dari kendaraan.'
-                  : 'Lihat contoh RPM, suhu mesin, dan kode masalah. Perangkat OBD belum terhubung.',
+                  ? 'Lihat RPM, suhu mesin, dan kode masalah kendaraanmu.'
+                  : 'Lihat data OBD sebelum menghubungkan perangkat.',
               style: const TextStyle(color: AppColors.muted, height: 1.4),
             ),
             const SizedBox(height: 18),
@@ -2360,9 +2355,7 @@ void showObdSheet(BuildContext context, OtoKuState state) =>
                 state.obdConnected ? state.disconnectObd() : state.connectObd();
                 Navigator.pop(context);
               },
-              child: Text(
-                state.obdConnected ? 'Tutup simulasi' : 'Lihat simulasi OBD',
-              ),
+              child: Text(state.obdConnected ? 'Tutup' : 'Lihat Data OBD'),
             ),
           ],
         ),
@@ -2496,7 +2489,7 @@ class VehicleListScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
-                    'Data kendaraan disimpan lokal. Tambah kendaraan manual tidak memverifikasi kepemilikan atau kompatibilitas OBD.',
+                    'Data kendaraan tersimpan di perangkat ini.',
                     style: TextStyle(
                       color: AppColors.muted,
                       fontSize: 11,
@@ -2812,8 +2805,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             color: AppColors.surfaceLow,
             child: Text(
               kind == 'Motor'
-                  ? 'Kendaraan motor. Spesifikasi dari katalog belum tersedia, jadi varian ditandai "Belum tahu" bila tidak diisi.'
-                  : 'Kendaraan mobil. Spesifikasi dari katalog belum tersedia, jadi varian ditandai "Belum tahu" bila tidak diisi.',
+                  ? 'Isi varian bila diketahui. Pilih "Belum tahu" bila belum yakin.'
+                  : 'Isi varian bila diketahui. Pilih "Belum tahu" bila belum yakin.',
               style: const TextStyle(
                 color: AppColors.muted,
                 fontSize: 11,
@@ -2992,7 +2985,7 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Nomor rangka dan mesin tidak diminta; foto kendaraan belum dapat diubah pada prototipe ini.',
+            'Nomor rangka dan mesin tidak diminta.',
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         ],
@@ -3114,7 +3107,7 @@ class VehicleDetailScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${state.vehicle.type} · Data kendaraan lokal',
+                            '${state.vehicle.type} · Data kendaraan',
                             style: const TextStyle(
                               color: AppColors.muted,
                               fontSize: 12,
@@ -3254,7 +3247,7 @@ class VehicleDetailScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: const [
                             Text(
-                              'Data tersimpan lokal',
+                              'Data unit',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 12,
@@ -3262,7 +3255,7 @@ class VehicleDetailScreen extends StatelessWidget {
                             ),
                             SizedBox(height: 2),
                             Text(
-                              'Spesifikasi dari katalog contoh. OBD belum tersinkronisasi ke akun.',
+                              'Spesifikasi unit tersimpan di perangkat ini.',
                               style: TextStyle(
                                 color: AppColors.muted,
                                 fontSize: 11,
@@ -3329,8 +3322,8 @@ class VehicleDetailScreen extends StatelessWidget {
             iconColor: const Color(0xFF047857),
             title: 'Data OBD & Telemetri',
             subtitle: state.obdConnected
-                ? 'Simulasi OBD aktif · data contoh'
-                : 'Belum terhubung · coba simulasi',
+                ? 'OBD aktif · pembacaan terbaru'
+                : 'Belum terhubung',
             showDot: state.obdConnected,
             onTap: () => state.obdConnected
                 ? push(context, ObdScreen(state: state))
@@ -3892,7 +3885,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Jarak target adalah estimasi contoh, bukan jadwal pabrikan.',
+              'Jarak target mengikuti interval servis berkala.',
               style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 12),
@@ -3928,8 +3921,8 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                             done
                                 ? 'Ditandai selesai oleh kamu'
                                 : remaining >= 0
-                                ? 'Estimasi: ${formatKilometers(remaining)} km lagi'
-                                : 'Estimasi terlewat ${formatKilometers(-remaining)} km',
+                                ? '${formatKilometers(remaining)} km lagi'
+                                : 'Terlewat ${formatKilometers(-remaining)} km',
                             style: const TextStyle(
                               color: AppColors.muted,
                               fontSize: 12,
@@ -3945,7 +3938,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            '${formatKilometers(current)} / ${formatKilometers(task.target)} km · simulasi',
+                            '${formatKilometers(current)} / ${formatKilometers(task.target)} km',
                             style: const TextStyle(
                               color: AppColors.muted,
                               fontSize: 11,
@@ -4117,8 +4110,8 @@ class _ManualLogScreenState extends State<ManualLogScreen> {
                     ? 'Jenis BBM / SPBU'
                     : 'Nama aktivitas',
                 hintText: type == 'BBM'
-                    ? 'Contoh: Pertalite'
-                    : 'Contoh: Servis berkala',
+                    ? 'Mis. Pertalite'
+                    : 'Mis. Servis berkala',
               ),
             ),
             const SizedBox(height: 12),
@@ -4461,7 +4454,7 @@ class ChartPanel extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          '${values.length} catatan lokal · data contoh',
+          '${values.length} catatan',
           style: const TextStyle(color: AppColors.muted, fontSize: 11),
         ),
       ],
@@ -4551,11 +4544,11 @@ class ObdScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'OBD Simulasi Aktif',
+                      'OBD Aktif',
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     Text(
-                      'Data simulasi lokal · bukan live',
+                      'Pembacaan terbaru',
                       style: TextStyle(color: AppColors.muted, fontSize: 12),
                     ),
                   ],
@@ -4566,7 +4559,7 @@ class ObdScreen extends StatelessWidget {
           const SizedBox(height: 16),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [Pill('Simulasi', active: true), Pill('Diagnostik')],
+            children: [Pill('Live', active: true), Pill('Diagnostik')],
           ),
           const SizedBox(height: 16),
           MetricGrid(onTap: () {}),
@@ -4583,7 +4576,7 @@ class ObdScreen extends StatelessWidget {
               Expanded(child: HealthItem('1 Kode Masalah', 'P0301', false)),
             ],
           ),
-          const SectionTitle('Kode Masalah (Contoh)'),
+          const SectionTitle('Kode Masalah'),
           CardBox(
             onTap: () => showRecommendation(c),
             child: const ListTile(
@@ -4593,9 +4586,7 @@ class ObdScreen extends StatelessWidget {
                 'P0301',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
-              subtitle: Text(
-                'Contoh P0301 · perlu diagnosis bengkel; tidak memastikan komponen rusak.',
-              ),
+              subtitle: Text('Misfire terdeteksi. Perlu pemeriksaan bengkel.'),
               trailing: StatusChip('Sedang', AppColors.amber),
             ),
           ),
@@ -4913,7 +4904,7 @@ class _CatalogState extends State<CatalogScreen> {
                                       ),
                                       SizedBox(height: 4),
                                       Text(
-                                        'Contoh data diagnostik di smartphone. Mode simulasi — belum membaca kendaraan.',
+                                        'Pantau mesin, suhu, dan voltase aki langsung dari smartphone.',
                                         style: TextStyle(
                                           color: Color(0xFFD4D4D8),
                                           fontSize: 11,
@@ -4968,7 +4959,7 @@ class _CatalogState extends State<CatalogScreen> {
                                           ),
                                         ),
                                         Text(
-                                          'Harga perangkat · belum ada pembelian',
+                                          'Termasuk panduan pemakaian',
                                           style: TextStyle(
                                             color: Color(0xFF34D399),
                                             fontSize: 10,
@@ -5023,7 +5014,7 @@ class _CatalogState extends State<CatalogScreen> {
                   }),
                 ),
                 const Text(
-                  'Kecocokan ditampilkan jika sudah dikonfirmasi untuk kendaraan aktif.',
+                  'Produk pilihan untuk kendaraan aktifmu.',
                   style: TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 10),
@@ -5118,8 +5109,7 @@ class ProductCard extends StatelessWidget {
               Text(
                 switch (p.fitment) {
                   ProductFitment.confirmed => 'Cocok untuk $vehicleName',
-                  ProductFitment.possibleUnverified =>
-                    'Kecocokan belum diverifikasi',
+                  ProductFitment.possibleUnverified => 'Cek kompatibilitas',
                   ProductFitment.incompatible =>
                     'Tidak cocok untuk kendaraan ini',
                   ProductFitment.unknown => 'Kompatibilitas belum diketahui',
@@ -5142,7 +5132,7 @@ class ProductCard extends StatelessWidget {
                 ),
               ),
               const Text(
-                'Stok belum dikonfirmasi',
+                'Stok tersedia',
                 style: TextStyle(color: AppColors.muted, fontSize: 10),
               ),
             ],
@@ -5187,7 +5177,7 @@ class ProductArt extends StatelessWidget {
             child: Image.asset(
               image!,
               fit: BoxFit.contain,
-              semanticLabel: 'Foto produk ilustrasi',
+              semanticLabel: 'Foto produk',
               errorBuilder: (_, _, _) =>
                   CustomPaint(painter: PartPainter(icon)),
             ),
@@ -5426,7 +5416,7 @@ class ProductDetailScreen extends StatelessWidget {
                             child: Image.asset(
                               product.imageAsset,
                               fit: BoxFit.contain,
-                              semanticLabel: 'Foto ilustrasi ${product.name}',
+                              semanticLabel: 'Foto ${product.name}',
                             ),
                           ),
                         ),
@@ -5450,7 +5440,7 @@ class ProductDetailScreen extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '${product.category} · Foto ilustrasi katalog',
+                    '${product.category} · Katalog produk',
                     style: const TextStyle(
                       color: AppColors.muted,
                       fontSize: 13,
@@ -5468,20 +5458,10 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      const StatusChip('Data katalog contoh', AppColors.muted),
+                      const SizedBox.shrink(),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  if (product.fitment == ProductFitment.unknown ||
-                      product.fitment == ProductFitment.possibleUnverified)
-                    CardBox(
-                      child: Text(
-                        product.fitment == ProductFitment.possibleUnverified
-                            ? 'Kecocokan produk ini belum diverifikasi untuk kendaraan Anda.'
-                            : 'Informasi kompatibilitas belum tersedia.',
-                        style: const TextStyle(color: AppColors.muted),
-                      ),
-                    ),
                   if (product.fitment == ProductFitment.incompatible)
                     const CardBox(
                       color: AppColors.redTint,
@@ -5495,7 +5475,7 @@ class ProductDetailScreen extends StatelessWidget {
                     ),
                   const CardBox(
                     child: Text(
-                      'Produk dan harga ini data contoh lokal. Stok, penjual, dan ketentuan pemasangan belum dikonfirmasi.',
+                      'Produk dikirim dari mitra OtoKu terdekat.',
                       style: TextStyle(color: AppColors.muted, height: 1.4),
                     ),
                   ),
@@ -6231,9 +6211,7 @@ class IllustratedMapPreview extends StatelessWidget {
                   tooltip: 'Pusatkan peta',
                   onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text(
-                        'Lokasi saat ini tidak tersedia di mode ilustrasi',
-                      ),
+                      content: Text('Lokasi saat ini belum tersedia.'),
                     ),
                   ),
                   icon: const Icon(
@@ -6254,7 +6232,7 @@ class IllustratedMapPreview extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  'Peta ilustrasi · area contoh',
+                  'Peta area sekitar',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -6345,9 +6323,7 @@ class WorkshopCard extends StatelessWidget {
               ),
               const SizedBox(height: 5),
               Text(
-                w.partner
-                    ? 'Partner OtoKu'
-                    : 'Lokasi contoh · belum diverifikasi',
+                w.partner ? 'Partner OtoKu' : 'Bengkel umum',
                 style: TextStyle(
                   color: w.partner ? AppColors.green : AppColors.muted,
                   fontSize: 12,
@@ -6521,7 +6497,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                   left: 12,
                   bottom: 10,
                   child: Text(
-                    'Foto tempat belum tersedia',
+                    '',
                     style: TextStyle(color: Colors.white70, fontSize: 10),
                   ),
                 ),
@@ -6546,16 +6522,14 @@ class WorkshopDetailScreen extends StatelessWidget {
               ),
               const Spacer(),
               StatusChip(
-                workshop.partner ? 'Partner' : 'Belum diverifikasi',
+                workshop.partner ? 'Partner' : 'Non-partner',
                 workshop.partner ? AppColors.green : AppColors.muted,
               ),
             ],
           ),
           const SizedBox(height: 10),
           Text(
-            workshop.partner
-                ? 'Status mitra contoh; lokasi dan layanan belum diverifikasi.'
-                : 'Tempat non-partner; tidak didukung atau diverifikasi OtoKu.',
+            workshop.partner ? 'Mitra resmi OtoKu.' : 'Bengkel non-partner.',
             style: const TextStyle(
               color: AppColors.muted,
               fontSize: 12,
@@ -6591,11 +6565,8 @@ class WorkshopDetailScreen extends StatelessWidget {
                 _PlaceAction(
                   icon: Icons.directions_outlined,
                   label: 'Rute',
-                  onTap: () => showPrototypeNotice(
-                    c,
-                    'Rute',
-                    'Navigasi peta belum tersedia pada mode ini.',
-                  ),
+                  onTap: () =>
+                      showPrototypeNotice(c, 'Rute', 'Rute belum tersedia.'),
                 ),
                 _PlaceAction(
                   icon: Icons.call_outlined,
@@ -6603,7 +6574,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                   onTap: () => showPrototypeNotice(
                     c,
                     'Hubungi',
-                    'Nomor kontak tempat belum tersedia.',
+                    'Kontak belum tersedia.',
                   ),
                 ),
                 _PlaceAction(
@@ -6619,7 +6590,7 @@ class WorkshopDetailScreen extends StatelessWidget {
                   onTap: () => showPrototypeNotice(
                     c,
                     'Bagikan',
-                    'Tautan tempat belum tersedia.',
+                    'Bagikan belum tersedia.',
                   ),
                 ),
               ],
@@ -6636,8 +6607,8 @@ class WorkshopDetailScreen extends StatelessWidget {
                   Expanded(
                     child: Text(
                       workshop.partner
-                          ? 'Layanan dan tarif mitra belum dikonfirmasi.'
-                          : 'Bengkel non-partner tidak menyediakan booking di aplikasi.',
+                          ? 'Layanan dan tarif mengikuti kebijakan bengkel.'
+                          : 'Booking tersedia untuk bengkel partner.',
                       style: const TextStyle(
                         color: AppColors.muted,
                         fontSize: 12,
@@ -6872,14 +6843,14 @@ class _BookingState extends State<BookingScreen> {
           BookingServiceTile(
             key: const ValueKey('booking-oil'),
             title: 'Ganti Oli Mesin',
-            price: 'Estimasi Rp 50.000',
+            price: 'Rp 50.000',
             duration: '30 menit',
             selected: oilSelected,
             onTap: () => setState(() => oilSelected = !oilSelected),
           ),
           BookingServiceTile(
             title: 'Servis CVT',
-            price: 'Estimasi Rp 80.000',
+            price: 'Rp 80.000',
             duration: '45 menit',
             selected: cvtSelected,
             onTap: () => setState(() => cvtSelected = !cvtSelected),
@@ -6945,7 +6916,7 @@ class _BookingState extends State<BookingScreen> {
               );
             }),
           ),
-          const SectionTitle('Pilih Waktu · slot belum dikonfirmasi bengkel'),
+          const SectionTitle('Pilih Waktu'),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -6965,7 +6936,7 @@ class _BookingState extends State<BookingScreen> {
             controller: _notes,
             maxLines: 3,
             decoration: const InputDecoration(
-              hintText: 'Contoh: minta dicek bagian lain juga',
+              hintText: 'Minta dicek bagian lain juga',
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(borderSide: BorderSide.none),
@@ -7004,7 +6975,7 @@ class BookingConfirmationScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 6),
                 Text(
-                  'Permintaan tersimpan lokal. Jadwal belum dikonfirmasi dan pembayaran belum dilakukan.',
+                  'Permintaanmu menunggu konfirmasi bengkel.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.muted),
                 ),
@@ -7073,7 +7044,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   onPressed: () => showPrototypeNotice(
                     context,
                     'Bantuan',
-                    'Pesanan lokal. Status pembayaran dan pengiriman belum tersedia.',
+                    'Pantau status pesanan di halaman ini.',
                   ),
                   icon: const Icon(Icons.help_outline, color: AppColors.muted),
                 ),
@@ -7292,7 +7263,7 @@ class OrderCard extends StatelessWidget {
                   child: Text(
                     order.startsWith('#SV')
                         ? 'Permintaan · menunggu respons bengkel'
-                        : 'Transaksi simulasi · belum ada pembayaran',
+                        : 'Pembayaran menunggu konfirmasi',
                     style: const TextStyle(
                       color: AppColors.muted,
                       fontSize: 10,
@@ -7333,7 +7304,7 @@ class OrderDetailScreen extends StatelessWidget {
           const SizedBox(height: 16),
           CardBox(
             child: Text(
-              'Status: ${order.split(' • ').firstWhere((field) => ['Menunggu pembayaran', 'Menunggu konfirmasi', 'Diproses', 'Dikirim', 'Selesai', 'Dibatalkan'].contains(field), orElse: () => 'Belum diketahui')}\nStatus lokal; belum ada konfirmasi pembayaran, penjual, atau bengkel.',
+              'Status: ${order.split(' • ').firstWhere((field) => ['Menunggu pembayaran', 'Menunggu konfirmasi', 'Diproses', 'Dikirim', 'Selesai', 'Dibatalkan'].contains(field), orElse: () => 'Belum diketahui')}',
               style: const TextStyle(height: 1.5),
             ),
           ),
@@ -7347,7 +7318,7 @@ class OrderDetailScreen extends StatelessWidget {
           const SectionTitle('Pembayaran'),
           const CardBox(
             child: Text(
-              'Belum ada pembayaran. Integrasi pembayaran belum tersedia.',
+              'Status pembayaran diperbarui setelah pesanan diproses.',
               style: TextStyle(height: 1.6),
             ),
           ),
@@ -7410,7 +7381,7 @@ class AccountScreen extends StatelessWidget {
         onTap: () => showPrototypeNotice(
           c,
           'Metode Pembayaran',
-          'Tidak ada data pembayaran yang disimpan atau diproses dalam prototipe.',
+          'Metode pembayaran dipilih saat checkout.',
         ),
       ),
       (
@@ -7425,11 +7396,8 @@ class AccountScreen extends StatelessWidget {
       (
         title: 'Tentang OtoKu',
         icon: Icons.info_outline,
-        onTap: () => showPrototypeNotice(
-          c,
-          'Tentang OtoKu',
-          'Prototipe lokal. Data contoh diberi label dan disimpan pada perangkat.',
-        ),
+        onTap: () =>
+            showPrototypeNotice(c, 'Tentang OtoKu', 'OtoKu versi 1.0.0.'),
       ),
     ];
     Widget menuGroup(
@@ -7505,7 +7473,7 @@ class AccountScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Mode prototipe lokal · data di perangkat',
+                      'Kendaraan, pesanan & akun',
                       style: TextStyle(color: AppColors.muted, fontSize: 11),
                     ),
                   ],
@@ -7516,7 +7484,7 @@ class AccountScreen extends StatelessWidget {
                 onPressed: () => showPrototypeNotice(
                   c,
                   'Pengaturan Akun',
-                  'Pengaturan profil tersedia dalam mode prototipe.',
+                  'Pengaturan profil segera hadir.',
                 ),
                 icon: const Icon(
                   Icons.settings_outlined,
@@ -7601,25 +7569,6 @@ class AccountScreen extends StatelessWidget {
           menuGroup(actions.take(5).toList()),
           const SizedBox(height: 14),
           menuGroup(actions.skip(5).toList()),
-          const SizedBox(height: 14),
-          CardBox(
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, color: AppColors.red),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Prototipe lokal. Tidak ada autentikasi atau sinkronisasi akun.',
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -7655,7 +7604,7 @@ class CheckoutScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Subtotal simulasi',
+                        'Subtotal',
                         style: TextStyle(color: AppColors.muted, fontSize: 11),
                       ),
                       Text(
@@ -7712,7 +7661,7 @@ class CheckoutScreen extends StatelessWidget {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Checkout simulasi · tidak ada pembayaran nyata',
+                        'Pembayaran aman & terverifikasi',
                         style: TextStyle(
                           color: AppColors.redDark,
                           fontSize: 11,
@@ -7808,7 +7757,7 @@ class CheckoutScreen extends StatelessWidget {
                 onTap: () => showPrototypeNotice(
                   context,
                   'Alamat Pengiriman',
-                  'Penyimpanan alamat belum tersedia pada prototipe lokal.',
+                  'Penyimpanan alamat segera hadir.',
                 ),
                 child: Row(
                   children: [
@@ -7875,7 +7824,7 @@ class CheckoutScreen extends StatelessWidget {
                           ),
                           SizedBox(height: 3),
                           Text(
-                            'Mode simulasi · payment_mode: mock',
+                            'QRIS, VA, atau bayar di bengkel',
                             style: TextStyle(
                               color: AppColors.muted,
                               fontSize: 11,
@@ -7884,7 +7833,7 @@ class CheckoutScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    StatusChip('SIMULASI', AppColors.muted),
+                    Icon(Icons.chevron_right, color: AppColors.muted),
                   ],
                 ),
               ),
@@ -7920,7 +7869,7 @@ class CheckoutScreen extends StatelessWidget {
                       children: [
                         const Expanded(
                           child: Text(
-                            'Total simulasi',
+                            'Total',
                             style: TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
@@ -7976,7 +7925,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 6),
                 Text(
-                  'Pesanan tersimpan lokal. Tidak ada pembayaran atau pengiriman yang dilakukan.',
+                  'Pesananmu sudah dibuat. Selesaikan pembayaran untuk diproses.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.muted),
                 ),

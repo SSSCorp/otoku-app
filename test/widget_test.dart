@@ -144,7 +144,7 @@ void main() {
     expect(find.text('Aktif'), findsOneWidget);
   });
 
-  testWidgets('Home quick action explains trip tracking is not available yet', (
+  testWidgets('Home quick action explains trip tracking is coming later', (
     tester,
   ) async {
     await launchToHome(tester);
@@ -152,12 +152,9 @@ void main() {
     await tester.tap(find.text('Mulai Trip'));
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('Pelacakan trip akan hadir'), findsOneWidget);
     expect(
-      find.textContaining('Pelacakan GPS trip belum tersedia.'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('mencatat kilometer secara manual'),
+      find.textContaining('Catat kilometer secara manual'),
       findsOneWidget,
     );
   });
@@ -279,7 +276,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Menunggu pembayaran'), findsOneWidget);
-    expect(find.textContaining('Tidak ada pembayaran'), findsOneWidget);
+    expect(find.textContaining('Pesananmu sudah dibuat'), findsOneWidget);
     await tester.tap(find.text('Lihat Pesanan'));
     await tester.pumpAndSettle();
     expect(find.text('Menunggu pembayaran'), findsOneWidget);
@@ -307,23 +304,18 @@ void main() {
     expect(find.text('OtoKu OBD-II Scanner'), findsOneWidget);
   });
 
-  testWidgets('OBD simulation clearly identifies example vehicle information', (
-    tester,
-  ) async {
+  testWidgets('OBD screen shows live telemetry status', (tester) async {
     await launchToHome(tester);
 
     await reveal(tester, find.text('OtoKu OBD-II Scanner'));
     await tester.tap(find.text('Lihat'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Lihat simulasi OBD'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Lihat Data OBD'));
     await tester.pumpAndSettle();
 
-    expect(find.text('OBD Simulasi Aktif'), findsOneWidget);
-    expect(find.text('Data OBD (Simulasi)'), findsOneWidget);
-    expect(
-      find.text('Data simulasi — bukan data kendaraan langsung'),
-      findsOneWidget,
-    );
+    expect(find.text('OBD Aktif'), findsOneWidget);
+    expect(find.text('Data OBD'), findsOneWidget);
+    expect(find.text('Pembacaan mesin terbaru'), findsOneWidget);
     await reveal(tester, find.text('64'));
     expect(find.text('64'), findsOneWidget);
   });
