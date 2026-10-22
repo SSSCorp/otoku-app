@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "dart": {
+      "command": "~/.local/share/flutter/bin/dart",
+      "args": [
+        "mcp-server",
+        "--enable",
+        "flutter_app_lifecycle",
+        "--enable",
+        "run_tests",
+        "--enable",
+        "dart_format",
+        "--enable",
+        "dart_fix"
+      ],
+      "description": "Official Dart/Flutter MCP server: analyze/fix/format code, run tests, manage pub deps, launch and hot reload apps, read runtime errors, logs, and inspect widgets.",
+      "timeout": 120
+    },
+    "marionette": {
+      "command": "~/.pub-cache/bin/marionette_mcp",
+      "description": "Drive a running Flutter app (debug/profile): see interactive elements, tap, type, scroll, swipe, screenshot, read logs, hot reload/restart.",
+      "timeout": 120
+    },
+    "stitch": {
+      "command": "npx",
+      "args": ["-y", "@google/stitch", "mcp", "start"],
+      "description": "Google Stitch: generate and edit UI screens and variants, capture/upload pages, and manage Stitch projects and design systems.",
+      "timeout": 180
+    }
+  }
+}
