@@ -1,21 +1,119 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_map/flutter_map.dart' as fmap;
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
+import 'package:latlong2/latlong.dart' as ll;
+import 'package:marionette_flutter/marionette_flutter.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-void main() => runApp(const OtoKuApp());
+import 'data/oto_ku_repository.dart';
+
+Future<void> main() async {
+  // Marionette gives AI agents (via the marionette MCP server) eyes and hands
+  // on the running app in debug builds; release builds use the normal binding.
+  if (kDebugMode) {
+    MarionetteBinding.ensureInitialized();
+  } else {
+    WidgetsFlutterBinding.ensureInitialized();
+  }
+  if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+  // Keys live in .env (gitignored); the shipped .env has placeholders only.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // Missing .env is fine: maps fall back to the illustrated preview.
+  }
+  final repository = await SqliteOtoKuRepository.open();
+  runApp(OtoKuApp(repository: repository));
+}
+
+String formatKilometers(int value) => value.toString().replaceAllMapped(
+  RegExp(r'\B(?=(\d{3})+(?!\d))'),
+  (_) => '.',
+);
 
 class AppColors {
   static const red = Color(0xFFE21B23), redDark = Color(0xFFB81218);
-  static const ink = Color(0xFF171717), muted = Color(0xFF6B6B6B);
-  static const bg = Color(0xFFF7F7F7), border = Color(0xFFE8E8E8);
-  static const green = Color(0xFF22A447), amber = Color(0xFFF59E0B);
-  static const redTint = Color(0xFFFDECEC), greenTint = Color(0xFFE6F6EA);
-  static const amberTint = Color(0xFFFEF3DC), darkSurface = Color(0xFF1A1A1A);
+  static const ink = Color(0xFF18181B), muted = Color(0xFF71717A);
+  static const bg = Color(0xFFF8F8F9), border = Color(0xFFE4E4E7);
+  static const green = Color(0xFF15803D), amber = Color(0xFFD97706);
+  static const redTint = Color(0xFFFDECEC), greenTint = Color(0xFFDCFCE7);
+  static const amberTint = Color(0xFFFEF3C7), darkSurface = Color(0xFF18181B);
+  // Kinetic Precision warm-neutral surfaces.
+  static const surfaceLow = Color(0xFFF4F4F5);
+  static const surfaceHigh = Color(0xFFE4E4E7);
+  static const navy = Color(0xFF27272A);
+}
+
+class CareTask {
+  final String title;
+  final int firstDue, interval;
+  final IconData icon;
+  const CareTask({
+    required this.title,
+    required this.firstDue,
+    required this.interval,
+    required this.icon,
+  });
+}
+
+const careTasks = <CareTask>[
+  CareTask(
+    title: 'Ganti Oli Mesin',
+    firstDue: 14000,
+    interval: 4000,
+    icon: Icons.oil_barrel_outlined,
+  ),
+  CareTask(
+    title: 'Cek Kampas Rem',
+    firstDue: 15000,
+    interval: 5000,
+    icon: Icons.disc_full,
+  ),
+  CareTask(
+    title: 'Cek Filter Udara',
+    firstDue: 15000,
+    interval: 5000,
+    icon: Icons.filter_alt_outlined,
+  ),
+  CareTask(
+    title: 'Cek Busi',
+    firstDue: 17500,
+    interval: 8000,
+    icon: Icons.electrical_services,
+  ),
+  CareTask(
+    title: 'Ganti Oli Gear (CVT)',
+    firstDue: 17500,
+    interval: 8000,
+    icon: Icons.settings_outlined,
+  ),
+];
+
+/// Next due odometer for a recurring care task. Once the previous target is
+/// passed (or the task was completed), the goal rolls to the next interval.
+int nextCareDueKm({
+  required CareTask task,
+  required int currentKm,
+  int? doneAtKm,
+}) {
+  var due = (doneAtKm ?? (task.firstDue - task.interval)) + task.interval;
+  while (due <= currentKm) {
+    due += task.interval;
+  }
+  return due;
 }
 
 class Vehicle {
-  final String brand, model, plate, type;
+  final String id, brand, model, plate, type;
   final int year, mileage;
   Vehicle({
     required this.brand,
@@ -24,7 +122,37 @@ class Vehicle {
     required this.type,
     required this.year,
     required this.mileage,
+    this.id = '',
   });
+  Vehicle copyWith({String? id, int? mileage, String? plate, String? type}) =>
+      Vehicle(
+        id: id ?? this.id,
+        brand: brand,
+        model: model,
+        plate: plate ?? this.plate,
+        type: type ?? this.type,
+        year: year,
+        mileage: mileage ?? this.mileage,
+      );
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'brand': brand,
+    'model': model,
+    'plate': plate,
+    'type': type,
+    'year': year,
+    'mileage': mileage,
+  };
+  static Vehicle fromMap(Map<String, dynamic> map, {Vehicle? fallback}) =>
+      Vehicle(
+        id: map['id'] as String? ?? fallback?.id ?? '',
+        brand: map['brand'] as String? ?? fallback?.brand ?? 'Kendaraan',
+        model: map['model'] as String? ?? fallback?.model ?? 'Baru',
+        plate: map['plate'] as String? ?? fallback?.plate ?? '',
+        type: map['type'] as String? ?? fallback?.type ?? 'Belum tahu',
+        year: (map['year'] as num?)?.toInt() ?? fallback?.year ?? 2020,
+        mileage: ((map['mileage'] as num?)?.toInt() ?? 0).clamp(0, 1 << 31),
+      );
   String get name => '$brand $model $year';
 }
 
@@ -40,22 +168,74 @@ class Product {
     this.icon, {
     this.fitment = ProductFitment.unknown,
   });
+  String get id => name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  String get imageAsset => switch (icon) {
+    'oil' => 'assets/product_images/engine_oil.jpg',
+    'brake' =>
+      name.contains('Mobil')
+          ? 'assets/product_images/car_brake_pads.jpg'
+          : 'assets/product_images/motorcycle_brake_pads.jpg',
+    'filter' => 'assets/product_images/air_filter.jpg',
+    'battery' => 'assets/product_images/motorcycle_battery.jpg',
+    'lamp' => 'assets/product_images/led_bulb.jpg',
+    _ => '',
+  };
 }
 
 class Workshop {
-  final String name, rating, distance, services;
-  Workshop(this.name, this.rating, this.distance, this.services);
+  final String name, rating, distance, services, category, address;
+  final bool partner, bookingEnabled;
+  final double lat, lng;
+  Workshop(
+    this.name,
+    this.rating,
+    this.distance,
+    this.services, {
+    this.category = 'Bengkel',
+    this.address = 'BINUS Bekasi · area sekitar',
+    this.partner = false,
+    this.bookingEnabled = false,
+    this.lat = -6.2196,
+    this.lng = 106.9995,
+  });
 }
 
 class OtoKuState extends ChangeNotifier {
-  final vehicle = Vehicle(
-    brand: 'Honda',
-    model: 'Beat',
-    plate: 'B 1234 XYZ',
-    type: 'CBS',
-    year: 2021,
-    mileage: 12450,
-  );
+  OtoKuState({OtoKuRepository? repository})
+    : repository = repository ?? MemoryOtoKuRepository();
+
+  final OtoKuRepository repository;
+  bool onboardingComplete = false;
+  bool initialized = false;
+  final logs = <Map<String, dynamic>>[];
+  final bookings = <String>[];
+
+  /// Care item -> odometer reading when it was last completed.
+  final Map<String, int> maintenanceDoneAt = {};
+  Set<String> get completedMaintenance => maintenanceDoneAt.keys.toSet();
+
+  final List<Vehicle> vehicles = [
+    Vehicle(
+      id: 'veh-beat',
+      brand: 'Honda',
+      model: 'Beat',
+      plate: 'B 1234 XYZ',
+      type: 'CBS',
+      year: 2021,
+      mileage: 12450,
+    ),
+  ];
+  int activeVehicleIndex = 0;
+  Vehicle get vehicle => vehicles[activeVehicleIndex];
+  set vehicle(Vehicle value) {
+    if (vehicles.isEmpty) {
+      vehicles.add(value);
+      activeVehicleIndex = 0;
+    } else {
+      vehicles[activeVehicleIndex] = value;
+    }
+  }
+
   bool obdConnected = false;
   final List<Product> products = [
     Product(
@@ -63,25 +243,24 @@ class OtoKuState extends ChangeNotifier {
       'Oli & Cairan',
       'Rp 65.000',
       'oil',
-      fitment: ProductFitment.confirmed,
+      fitment: ProductFitment.possibleUnverified,
     ),
     Product(
       'Kampas Rem Depan Beat',
       'Rem',
       'Rp 85.000',
       'brake',
-      fitment: ProductFitment.confirmed,
+      fitment: ProductFitment.possibleUnverified,
     ),
     Product(
       'Filter Udara Honda Beat',
       'Filter',
       'Rp 42.000',
       'filter',
-      fitment: ProductFitment.confirmed,
+      fitment: ProductFitment.possibleUnverified,
     ),
     Product('Aki Motor YTZ5S', 'Aki', 'Rp 185.000', 'battery'),
     Product('Lampu LED Universal', 'Aksesori', 'Rp 75.000', 'lamp'),
-    Product('Scanner OBD Bluetooth', 'Perangkat OBD', 'Rp 249.000', 'obd'),
     Product(
       'Kampas Rem Mobil Avanza',
       'Rem',
@@ -93,66 +272,424 @@ class OtoKuState extends ChangeNotifier {
   final workshops = [
     Workshop(
       'Bengkel Jaya Motor',
-      '4.7 (238)',
-      '2.1 km',
-      'Servis Rutin · Ganti Oli',
+      'Belum dinilai',
+      '0.3 km',
+      'Servis rutin · Ganti oli',
+      category: 'Bengkel',
+      partner: true,
+      bookingEnabled: true,
+      lat: -6.2178,
+      lng: 107.0008,
+      address: 'Marga Mulya, Bekasi Utara',
     ),
     Workshop(
-      'AutoCare Plus',
-      '4.6 (120)',
-      '3.4 km',
-      'Spesialis CVT · Rem · Oli',
+      'Karla Jaya Motor',
+      'Belum dinilai',
+      '5.6 km',
+      'Bengkel umum · servis mesin',
+      category: 'Bengkel',
+      lat: -6.27008,
+      lng: 107.00381,
+      address: 'Bekasi Selatan',
     ),
-    Workshop('Speed Motor', '4.5 (98)', '4.2 km', 'Servis Lengkap · Body Part'),
+    Workshop(
+      'Fahmi Jaya Motor',
+      'Belum dinilai',
+      '5.6 km',
+      'Bengkel umum · tune up',
+      category: 'Bengkel',
+      lat: -6.27011,
+      lng: 107.00391,
+      address: 'Bekasi Selatan',
+    ),
+    Workshop(
+      'Honda Service',
+      'Belum dinilai',
+      '6.9 km',
+      'Servis resmi · sparepart',
+      category: 'Bengkel',
+      lat: -6.24477,
+      lng: 106.94271,
+      address: 'Jatiasih, Bekasi',
+    ),
+    Workshop(
+      'PT Duren Sawit Mobilindo',
+      'Belum dinilai',
+      '8.6 km',
+      'Servis mobil · body repair',
+      category: 'Bengkel',
+      lat: -6.23056,
+      lng: 106.92295,
+      address: 'Duren Sawit, Jakarta Timur',
+    ),
+    Workshop(
+      'Pertamina 34-17542',
+      'Belum dinilai',
+      '3.9 km',
+      'Bahan bakar · area Bekasi Utara',
+      category: 'SPBU',
+      lat: -6.21339,
+      lng: 107.03379,
+      address: 'Bekasi Utara',
+    ),
+    Workshop(
+      'SPBU 34-13908',
+      'Belum dinilai',
+      '4.9 km',
+      'Bahan bakar · area Jakarta Timur',
+      category: 'SPBU',
+      lat: -6.18954,
+      lng: 106.96733,
+      address: 'Cakung, Jakarta Timur',
+    ),
+    Workshop(
+      'SPBU 34-13907',
+      'Belum dinilai',
+      '5.2 km',
+      'Bahan bakar · area Bekasi Barat',
+      category: 'SPBU',
+      lat: -6.20783,
+      lng: 106.95396,
+      address: 'Bekasi Barat',
+    ),
+    Workshop(
+      'SPBU 34-13905',
+      'Belum dinilai',
+      '5.3 km',
+      'Bahan bakar · area Bekasi Barat',
+      category: 'SPBU',
+      lat: -6.19974,
+      lng: 106.95595,
+      address: 'Bekasi Barat',
+    ),
+    Workshop(
+      'SPBU 34-13421',
+      'Belum dinilai',
+      '6.3 km',
+      'Bahan bakar · area Jatiasih',
+      category: 'SPBU',
+      lat: -6.21833,
+      lng: 106.94258,
+      address: 'Jatiasih, Bekasi',
+    ),
+    Workshop(
+      'Alfamart KH Muchtar Tabrani',
+      'Belum dinilai',
+      '0.5 km',
+      'Minimarket · kebutuhan harian',
+      category: 'Minimarket',
+      lat: -6.22173,
+      lng: 107.00317,
+      address: 'Jl. KH Muchtar Tabrani',
+    ),
+    Workshop(
+      'Indomaret KH Muchtar Tabrani',
+      'Belum dinilai',
+      '0.5 km',
+      'Minimarket · kebutuhan harian',
+      category: 'Minimarket',
+      lat: -6.22223,
+      lng: 107.00331,
+      address: 'Jl. KH Muchtar Tabrani',
+    ),
+    Workshop(
+      'Indomaret Marga Mulya',
+      'Belum dinilai',
+      '0.7 km',
+      'Minimarket · kebutuhan harian',
+      category: 'Minimarket',
+      lat: -6.21487,
+      lng: 107.00322,
+      address: 'Marga Mulya, Bekasi Utara',
+    ),
+    Workshop(
+      'Indomaret Harapan Jaya',
+      'Belum dinilai',
+      '0.9 km',
+      'Minimarket · kebutuhan harian',
+      category: 'Minimarket',
+      lat: -6.21446,
+      lng: 107.00518,
+      address: 'Harapan Jaya, Bekasi Utara',
+    ),
   ];
   final cart = <Product>[];
-  final orders = <String>[
-    '#SP250922001 • Kampas Rem Depan • Honda Beat • Rp 85.000 • Diproses • 22 Sep 2025',
-    '#SP250918003 • Oli Shell Advance • Rp 79.000 • Pesanan Selesai • 18 Sep 2025',
-    '#SV250915002 • Ganti Oli • Bengkel Jaya Motor • Rp 60.000 • Selesai • 15 Sep 2025',
-    '#SV250901004 • Servis Rutin • Bengkel AutoCare • Rp 80.000 • Selesai • 01 Sep 2025',
-  ];
-  void connectObd() {
+  final orders = <String>[];
+  Future<void> restore() async {
+    onboardingComplete = await repository.hasCompletedOnboarding();
+    final saved = await repository.loadState();
+    if (saved != null) {
+      final savedVehicles = saved['vehicles'];
+      if (savedVehicles is List && savedVehicles.isNotEmpty) {
+        vehicles
+          ..clear()
+          ..addAll(
+            savedVehicles.whereType<Map>().map(
+              (entry) => Vehicle.fromMap(Map<String, dynamic>.from(entry)),
+            ),
+          );
+      } else {
+        final savedVehicle = saved['vehicle'];
+        if (savedVehicle is Map) {
+          final details = Map<String, dynamic>.from(savedVehicle);
+          final mileage = details['mileage'] ?? saved['mileage'];
+          vehicles
+            ..clear()
+            ..add(
+              Vehicle.fromMap({
+                ...details,
+                if (mileage is int) 'mileage': mileage,
+              }),
+            );
+        }
+      }
+      if (vehicles.isEmpty) vehicles.add(_seedVehicle());
+      final savedIndex = (saved['activeVehicleIndex'] as num?)?.toInt() ?? 0;
+      activeVehicleIndex = savedIndex.clamp(0, vehicles.length - 1);
+      obdConnected = saved['obdConnected'] == true;
+      orders
+        ..clear()
+        ..addAll((saved['orders'] as List<dynamic>? ?? []).cast<String>());
+      cart
+        ..clear()
+        ..addAll(
+          (saved['cart'] as List<dynamic>? ?? [])
+              .cast<String>()
+              .map((id) => products.where((product) => product.id == id))
+              .where((matches) => matches.isNotEmpty)
+              .map((matches) => matches.first),
+        );
+      logs
+        ..clear()
+        ..addAll(
+          (saved['logs'] as List<dynamic>? ?? []).whereType<Map>().map(
+            (log) => Map<String, dynamic>.from(log),
+          ),
+        );
+      bookings
+        ..clear()
+        ..addAll((saved['bookings'] as List<dynamic>? ?? []).cast<String>());
+      maintenanceDoneAt
+        ..clear()
+        ..addAll({
+          for (final entry
+              in (saved['maintenanceDoneAt'] as Map<dynamic, dynamic>? ??
+                      const {})
+                  .entries)
+            entry.key as String: (entry.value as num?)?.toInt() ?? 0,
+        });
+      if (maintenanceDoneAt.isEmpty) {
+        for (final title
+            in (saved['completedMaintenance'] as List<dynamic>? ?? [])
+                .cast<String>()) {
+          maintenanceDoneAt[title] = 0;
+        }
+      }
+    }
+    initialized = true;
+    notifyListeners();
+  }
+
+  Future<void> finishOnboarding() async {
+    onboardingComplete = true;
+    await repository.completeOnboarding();
+    notifyListeners();
+  }
+
+  Future<void> _persist() => repository.saveState({
+    'mileage': vehicle.mileage,
+    'vehicles': vehicles.map((item) => item.toMap()).toList(),
+    'activeVehicleIndex': activeVehicleIndex,
+    'vehicle': vehicle.toMap(),
+    'obdConnected': obdConnected,
+    'cart': cart.map((product) => product.id).toList(),
+    'orders': orders,
+    'logs': logs,
+    'bookings': bookings,
+    'maintenanceDoneAt': maintenanceDoneAt,
+    'completedMaintenance': completedMaintenance.toList(),
+  });
+
+  Future<void> connectObd() async {
     obdConnected = true;
     notifyListeners();
+    await _persist();
   }
 
-  void disconnectObd() {
+  Future<void> disconnectObd() async {
     obdConnected = false;
     notifyListeners();
+    await _persist();
   }
 
-  void add(Product p) {
-    if (!cart.contains(p)) cart.add(p);
+  int quantityOf(Product product) =>
+      cart.where((item) => item.id == product.id).length;
+
+  int get cartSubtotal => cart.fold(
+    0,
+    (sum, product) =>
+        sum + int.parse(product.price.replaceAll(RegExp(r'[^0-9]'), '')),
+  );
+
+  Future<void> add(Product p) async {
+    cart.add(p);
     notifyListeners();
+    await _persist();
   }
 
-  void checkout(String label) {
-    orders.insert(
-      0,
-      '#SP${DateTime.now().millisecondsSinceEpoch.toString().substring(5)} • $label • Diproses',
-    );
+  Future<void> removeOne(Product product) async {
+    final index = cart.lastIndexWhere((item) => item.id == product.id);
+    if (index >= 0) cart.removeAt(index);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<String> checkout() async {
+    if (cart.isEmpty) throw StateError('Cart is empty.');
+    final id =
+        '#SP${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+    final date = DateTime.now();
+    final summary = cart
+        .map((product) => '${quantityOf(product)}x ${product.name}')
+        .toSet()
+        .join(', ');
+    final order =
+        '$id • $summary • Menunggu pembayaran • Rp ${formatKilometers(cartSubtotal)} • ${date.day}/${date.month}/${date.year}';
+    orders.insert(0, order);
     cart.clear();
     notifyListeners();
+    await _persist();
+    return order;
   }
 
-  void addBooking(String workshop) {
+  Future<String> addBooking(
+    String workshop, {
+    required List<String> services,
+    required DateTime date,
+    required String time,
+    String notes = '',
+  }) async {
+    final booking =
+        'Booking $workshop · ${services.join(', ')} · ${date.day}/${date.month}/${date.year} $time${notes.trim().isEmpty ? '' : ' · Catatan: ${notes.trim()}'}';
+    bookings.insert(0, booking);
     orders.insert(
       0,
-      '#SV${DateTime.now().millisecondsSinceEpoch.toString().substring(5)} • Booking $workshop • Diproses',
+      '#SV${DateTime.now().millisecondsSinceEpoch.toString().substring(5)} • $booking • Menunggu konfirmasi • ${date.day}/${date.month}/${date.year}',
     );
     notifyListeners();
+    await _persist();
+    return booking;
   }
+
+  Future<void> addLog(Map<String, dynamic> log) async {
+    logs.insert(0, log);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> completeMaintenance(String title) async {
+    maintenanceDoneAt[title] = vehicle.mileage;
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> updateVehicle(Vehicle updated) async {
+    if (updated.mileage < vehicle.mileage) {
+      throw ArgumentError('Odometer cannot decrease without correction.');
+    }
+    final mileageChanged = updated.mileage != vehicle.mileage;
+    vehicle = updated;
+    if (mileageChanged) {
+      logs.insert(0, {
+        'type': 'odometer',
+        'title': 'Kilometer diperbarui',
+        'value': updated.mileage,
+        'date': DateTime.now().toIso8601String(),
+        'source': 'manual',
+      });
+    }
+    notifyListeners();
+    await _persist();
+  }
+
+  Vehicle _seedVehicle() => Vehicle(
+    id: 'veh-beat',
+    brand: 'Honda',
+    model: 'Beat',
+    plate: 'B 1234 XYZ',
+    type: 'CBS',
+    year: 2021,
+    mileage: 12450,
+  );
+
+  /// Adds a user-defined vehicle and makes it the active one.
+  Future<Vehicle> addVehicle(Vehicle vehicle) async {
+    final created = vehicle.copyWith(
+      id: vehicle.id.isEmpty
+          ? 'veh-${DateTime.now().microsecondsSinceEpoch}'
+          : vehicle.id,
+    );
+    vehicles.add(created);
+    activeVehicleIndex = vehicles.length - 1;
+    notifyListeners();
+    await _persist();
+    return created;
+  }
+
+  Future<void> selectVehicle(int index) async {
+    if (index < 0 || index >= vehicles.length || index == activeVehicleIndex) {
+      return;
+    }
+    activeVehicleIndex = index;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// Removes a vehicle, keeping at least one registered vehicle.
+  Future<bool> removeVehicle(int index) async {
+    if (vehicles.length <= 1 || index < 0 || index >= vehicles.length) {
+      return false;
+    }
+    vehicles.removeAt(index);
+    if (activeVehicleIndex >= vehicles.length) {
+      activeVehicleIndex = vehicles.length - 1;
+    } else if (index < activeVehicleIndex) {
+      activeVehicleIndex--;
+    }
+    notifyListeners();
+    await _persist();
+    return true;
+  }
+
+  Future<void> updateMileage(int mileage) => updateVehicle(
+    Vehicle(
+      id: vehicle.id,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      plate: vehicle.plate,
+      type: vehicle.type,
+      year: vehicle.year,
+      mileage: mileage,
+    ),
+  );
 }
 
 class OtoKuApp extends StatefulWidget {
-  const OtoKuApp({super.key});
+  final OtoKuRepository? repository;
+  const OtoKuApp({super.key, this.repository});
   @override
   State<OtoKuApp> createState() => _OtoKuAppState();
 }
 
 class _OtoKuAppState extends State<OtoKuApp> {
-  final state = OtoKuState();
+  late final state = OtoKuState(repository: widget.repository);
+
+  @override
+  void initState() {
+    super.initState();
+    appTabIndex.value = 0;
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: state,
@@ -162,20 +699,141 @@ class _OtoKuAppState extends State<OtoKuApp> {
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: AppColors.bg,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.red,
+        canvasColor: AppColors.bg,
+        colorScheme: const ColorScheme(
+          brightness: Brightness.light,
           primary: AppColors.red,
+          onPrimary: Colors.white,
+          primaryContainer: AppColors.redTint,
+          onPrimaryContainer: Color(0xFF6B0D11),
+          secondary: Color(0xFF52525B),
+          onSecondary: Colors.white,
+          secondaryContainer: Color(0xFFF4F4F5),
+          onSecondaryContainer: AppColors.ink,
+          tertiary: Color(0xFF3F3F46),
+          onTertiary: Colors.white,
+          tertiaryContainer: Color(0xFFF4F4F5),
+          onTertiaryContainer: AppColors.ink,
+          error: AppColors.redDark,
+          onError: Colors.white,
+          errorContainer: Color(0xFFFFF1F2),
+          onErrorContainer: Color(0xFF9F1239),
           surface: Colors.white,
+          onSurface: AppColors.ink,
+          onSurfaceVariant: Color(0xFF52525B),
+          surfaceContainerLowest: Colors.white,
+          surfaceContainerLow: AppColors.surfaceLow,
+          surfaceContainer: Color(0xFFEFEFF1),
+          surfaceContainerHigh: AppColors.surfaceHigh,
+          surfaceContainerHighest: Color(0xFFE9E9EB),
+          outline: Color(0xFFA1A1AA),
+          outlineVariant: AppColors.border,
+          inverseSurface: AppColors.ink,
+          onInverseSurface: Color(0xFFFAFAFA),
+          inversePrimary: Color(0xFFFFB3B6),
+          surfaceTint: AppColors.red,
+          shadow: Color(0xFF09090B),
+          scrim: Color(0xFF09090B),
         ),
-        fontFamily: 'SF Pro Text',
-        fontFamilyFallback: const ['Roboto', 'Arial'],
+        fontFamily: 'Plus Jakarta Sans',
+        dividerColor: AppColors.border,
+        dialogTheme: DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          modalBackgroundColor: Colors.white,
+          modalBarrierColor: Color(0x9909090B),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: AppColors.ink,
+          contentTextStyle: const TextStyle(
+            color: Colors.white,
+            fontFamily: 'Plus Jakarta Sans',
+            fontSize: 13,
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: AppColors.surfaceLow,
+          selectedColor: AppColors.red,
+          side: BorderSide.none,
+          labelStyle: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          secondaryLabelStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          shape: const StadiumBorder(),
+        ),
+        tabBarTheme: const TabBarThemeData(
+          indicatorColor: AppColors.red,
+          labelColor: AppColors.red,
+          unselectedLabelColor: AppColors.muted,
+          dividerColor: AppColors.border,
+        ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: AppColors.red,
+          linearTrackColor: AppColors.surfaceHigh,
+          circularTrackColor: AppColors.surfaceHigh,
+        ),
+        textTheme: const TextTheme(
+          headlineMedium: TextStyle(
+            fontFamily: 'Space Grotesk',
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -.5,
+            color: AppColors.ink,
+          ),
+          titleLarge: TextStyle(
+            fontFamily: 'Space Grotesk',
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -.3,
+            color: AppColors.ink,
+          ),
+          titleMedium: TextStyle(
+            fontFamily: 'Space Grotesk',
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -.1,
+            color: AppColors.ink,
+          ),
+          bodyMedium: TextStyle(color: AppColors.ink, height: 1.35),
+          bodySmall: TextStyle(color: AppColors.muted, height: 1.35),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.surfaceLow,
+          hintStyle: const TextStyle(color: AppColors.muted),
+          border: OutlineInputBorder(
+            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.red,
             foregroundColor: Colors.white,
             minimumSize: const Size(48, 48),
+            textStyle: const TextStyle(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -.1,
+            ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(12),
             ),
           ),
         ),
@@ -216,6 +874,11 @@ class _OtoKuAppState extends State<OtoKuApp> {
   );
 }
 
+/// Warm ambient shadow from the Kinetic Precision layer-1 cards.
+const _cardShadow = [
+  BoxShadow(color: Color(0x0A18181B), blurRadius: 8, offset: Offset(0, 2)),
+];
+
 class SplashScreen extends StatefulWidget {
   final OtoKuState state;
   const SplashScreen({super.key, required this.state});
@@ -227,14 +890,17 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(milliseconds: 1100), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => AppShell(state: widget.state)),
-        );
-      }
-    });
+    _openApp();
+  }
+
+  Future<void> _openApp() async {
+    await widget.state.restore();
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+    final next = widget.state.onboardingComplete
+        ? AppShell(state: widget.state)
+        : OnboardingScreen(state: widget.state);
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
   }
 
   @override
@@ -245,28 +911,14 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const CarMark(size: 118),
-            const SizedBox(height: 26),
-            RichText(
-              text: const TextSpan(
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -1.4,
-                ),
-                children: [
-                  TextSpan(
-                    text: 'Oto',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  TextSpan(
-                    text: 'Ku',
-                    style: TextStyle(color: AppColors.red),
-                  ),
-                ],
-              ),
+            Image.asset(
+              'assets/OtoKu Logo.png',
+              width: 220,
+              height: 88,
+              fit: BoxFit.contain,
+              semanticLabel: 'OtoKu',
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             const Text(
               'Perawatan kendaraan lebih mudah,\nselalu terpantau.',
               textAlign: TextAlign.center,
@@ -274,6 +926,153 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: Colors.white70,
                 height: 1.5,
                 fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class OnboardingScreen extends StatefulWidget {
+  final OtoKuState state;
+  const OnboardingScreen({super.key, required this.state});
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final _controller = PageController();
+  int _page = 0;
+  static const _pages = [
+    (
+      Icons.two_wheeler_outlined,
+      'Rawat kendaraan lebih mudah',
+      'Catat kilometer, servis, dan pengeluaran kendaraan dalam satu tempat.',
+    ),
+    (
+      Icons.health_and_safety_outlined,
+      'Kamu tetap bisa tanpa OBD',
+      'Perawatan manual tetap berjalan meski OBD belum terhubung.',
+    ),
+    (
+      Icons.storefront_outlined,
+      'Temukan produk dan bengkel',
+      'Cari kebutuhan kendaraan dan lihat status kecocokannya sebelum memilih.',
+    ),
+  ];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _finish() async {
+    await widget.state.finishOnboarding();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => AppShell(state: widget.state)),
+    );
+  }
+
+  void _next() {
+    if (_page == _pages.length - 1) {
+      _finish();
+    } else {
+      _controller.nextPage(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.bg,
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Image.asset('assets/OtoKu Logo.png', width: 86, height: 32),
+                const Spacer(),
+                TextButton(onPressed: _finish, child: const Text('Lewati')),
+              ],
+            ),
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: _pages.length,
+                onPageChanged: (index) => setState(() => _page = index),
+                itemBuilder: (context, index) {
+                  final page = _pages[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 180,
+                          height: 180,
+                          decoration: BoxDecoration(
+                            color: AppColors.redTint,
+                            borderRadius: BorderRadius.circular(48),
+                          ),
+                          child: Icon(page.$1, color: AppColors.red, size: 82),
+                        ),
+                        const SizedBox(height: 36),
+                        Text(
+                          page.$2,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            height: 1.15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          page.$3,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            height: 1.5,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                _pages.length,
+                (index) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: _page == index ? 22 : 7,
+                  height: 7,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: _page == index ? AppColors.red : AppColors.border,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _next,
+                child: Text(_page == _pages.length - 1 ? 'Mulai' : 'Lanjut'),
               ),
             ),
           ],
@@ -292,7 +1091,26 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
-  final pages = const ['Home', 'Shop', 'Peta', 'Pesanan', 'Akun'];
+  final pages = const ['Beranda', 'Toko', 'Peta', 'Pesanan', 'Akun'];
+
+  @override
+  void initState() {
+    super.initState();
+    index = appTabIndex.value;
+    appTabIndex.addListener(_syncTab);
+  }
+
+  void _syncTab() {
+    if (!mounted || index == appTabIndex.value) return;
+    setState(() => index = appTabIndex.value);
+  }
+
+  @override
+  void dispose() {
+    appTabIndex.removeListener(_syncTab);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = [
@@ -306,18 +1124,21 @@ class _AppShellState extends State<AppShell> {
       body: body,
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) => setState(() => index = i),
+        onDestinationSelected: (i) {
+          appTabIndex.value = i;
+          setState(() => index = i);
+        },
         height: 72,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: 'Home',
+            label: 'Beranda',
           ),
           NavigationDestination(
             icon: Icon(Icons.grid_view_outlined),
             selectedIcon: Icon(Icons.grid_view),
-            label: 'Shop',
+            label: 'Toko',
           ),
           NavigationDestination(
             icon: Icon(Icons.map_outlined),
@@ -395,18 +1216,22 @@ class CardBox extends StatelessWidget {
     this.onTap,
   });
   @override
-  Widget build(BuildContext context) => Card(
-    margin: EdgeInsets.zero,
-    elevation: 0,
-    color: color,
-    shape: RoundedRectangleBorder(
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: color,
       borderRadius: BorderRadius.circular(18),
-      side: const BorderSide(color: AppColors.border),
+      border: Border.all(color: AppColors.border),
+      boxShadow: _cardShadow,
     ),
-    child: InkWell(
-      onTap: onTap,
+    child: Material(
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(18),
-      child: Padding(padding: padding, child: child),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(padding: padding, child: child),
+      ),
     ),
   );
 }
@@ -423,18 +1248,33 @@ class SectionTitle extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -.3,
+          ),
         ),
         const Spacer(),
         if (action != null)
           TextButton(
             onPressed: onTap,
-            child: Text(
-              action!,
-              style: const TextStyle(
-                color: AppColors.red,
-                fontWeight: FontWeight.w700,
-              ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: Size.zero,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  action!,
+                  style: const TextStyle(
+                    color: AppColors.red,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const Icon(Icons.arrow_forward, size: 14, color: AppColors.red),
+              ],
             ),
           ),
       ],
@@ -460,7 +1300,7 @@ class Pill extends StatelessWidget {
           ? AppColors.red
           : selectedTint
           ? AppColors.redTint
-          : const Color(0xFFF1F1EF),
+          : AppColors.surfaceLow,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
         color: active || selectedTint ? AppColors.red : Colors.transparent,
@@ -515,9 +1355,9 @@ class HomeVehicleCard extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFFFCE7E6),
-                              Color(0xFFF5D9D6),
-                              Color(0xFFF0E8E2),
+                              Color(0xFFFAFAFA),
+                              Color(0xFFF4F4F5),
+                              Color(0xFFE9E7EA),
                             ],
                           ),
                         ),
@@ -671,36 +1511,51 @@ class HomeVehicleCard extends StatelessWidget {
               const Divider(height: 1, indent: 16, endIndent: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(13, 12, 13, 14),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _VehicleStat(
+                child: Builder(
+                  builder: (context) {
+                    final stats = <_VehicleStatData>[
+                      _VehicleStatData(
                         icon: Icons.speed_outlined,
-                        value: '12.450',
+                        value: formatKilometers(vehicle.mileage),
                         unit: 'km',
                         label: 'JARAK TEMPUH',
                       ),
-                    ),
-                    Container(width: 1, height: 34, color: AppColors.border),
-                    Expanded(
-                      child: _VehicleStat(
+                      _VehicleStatData(
                         icon: Icons.build_outlined,
-                        value: 'Mar 2025',
+                        value: 'Belum dicatat',
                         unit: '',
                         label: 'SERVIS TERAKHIR',
                       ),
-                    ),
-                    Container(width: 1, height: 34, color: AppColors.border),
-                    const Expanded(
-                      child: _VehicleStat(
-                        icon: Icons.favorite_border,
-                        value: 'Baik',
+                      _VehicleStatData(
+                        icon: Icons.info_outline,
+                        value: 'Belum dicek',
                         unit: '',
                         label: 'KONDISI',
-                        good: true,
                       ),
-                    ),
-                  ],
+                    ];
+                    return Row(
+                      children: [
+                        for (final (index, stat) in stats.indexed) ...[
+                          if (index > 0) const SizedBox(width: 6),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceLow,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: _VehicleStat(
+                                icon: stat.icon,
+                                value: stat.value,
+                                unit: stat.unit,
+                                label: stat.label,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -711,22 +1566,31 @@ class HomeVehicleCard extends StatelessWidget {
   }
 }
 
+class _VehicleStatData {
+  final IconData icon;
+  final String value, unit, label;
+  const _VehicleStatData({
+    required this.icon,
+    required this.value,
+    required this.unit,
+    required this.label,
+  });
+}
+
 class _VehicleStat extends StatelessWidget {
   final IconData icon;
   final String value, unit, label;
-  final bool good;
   const _VehicleStat({
     required this.icon,
     required this.value,
     required this.unit,
     required this.label,
-    this.good = false,
   });
   @override
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(icon, size: 15, color: good ? AppColors.green : AppColors.muted),
+      Icon(icon, size: 15, color: AppColors.muted),
       const SizedBox(height: 4),
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +1600,7 @@ class _VehicleStat extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: good ? AppColors.green : AppColors.ink,
+              color: AppColors.ink,
             ),
           ),
           if (unit.isNotEmpty)
@@ -774,33 +1638,38 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: Row(
                 children: [
-                  RichText(
-                    text: const TextSpan(
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.8,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: 'Oto',
-                          style: TextStyle(color: AppColors.ink),
-                        ),
-                        TextSpan(
-                          text: 'Ku',
-                          style: TextStyle(color: AppColors.red),
-                        ),
-                      ],
-                    ),
+                  Image.asset(
+                    'assets/OtoKu Logo.png',
+                    width: 104,
+                    height: 36,
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.contain,
+                    semanticLabel: 'OtoKu',
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () => showNotificationSheet(context),
-                    icon: const Icon(Icons.notifications_none),
+                  Stack(
+                    children: [
+                      IconButton(
+                        onPressed: () => showNotificationSheet(context),
+                        icon: const Icon(Icons.notifications_none),
+                      ),
+                      const Positioned(
+                        top: 10,
+                        right: 10,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: SizedBox(width: 8, height: 8),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(width: 4),
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: AppColors.ink,
+                    backgroundColor: AppColors.red,
                     child: const Text(
                       'AB',
                       style: TextStyle(
@@ -818,17 +1687,73 @@ class HomeScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                GestureDetector(
+                  onTap: () => openTab(context, 1),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLow,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.search, color: AppColors.muted, size: 20),
+                        SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            'Cari sparepart, bengkel, atau layanan...',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.tune, color: AppColors.muted, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 HomeVehicleCard(
                   state: state,
                   onTap: () => push(context, VehicleDetailScreen(state: state)),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HomeQuickAction(
+                        icon: Icons.add_circle_outline,
+                        label: 'Catat aktivitas',
+                        onTap: () =>
+                            push(context, ManualLogScreen(state: state)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _HomeQuickAction(
+                        icon: Icons.route_outlined,
+                        label: 'Mulai Trip',
+                        onTap: () => showPrototypeNotice(
+                          context,
+                          'Mulai Trip',
+                          'Pelacakan trip akan hadir di pembaruan berikutnya. Catat kilometer secara manual untuk sekarang.',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
                 SectionTitle(
                   'Perawatan Berikutnya',
                   action: 'Lihat Semua',
                   onTap: () => push(context, MaintenanceScreen(state: state)),
                 ),
                 MaintenanceCard(
+                  state: state,
                   onTap: () => push(context, MaintenanceScreen(state: state)),
                 ),
                 const SizedBox(height: 16),
@@ -837,7 +1762,7 @@ class HomeScreen extends StatelessWidget {
                     : LockedObdCard(state: state),
                 if (state.obdConnected) ...[
                   SectionTitle(
-                    'Data OBD Demo',
+                    'Data OBD',
                     action: 'Lihat Semua',
                     onTap: () => push(context, ObdScreen(state: state)),
                   ),
@@ -845,7 +1770,7 @@ class HomeScreen extends StatelessWidget {
                     onTap: () => push(context, ObdScreen(state: state)),
                   ),
                   SectionTitle(
-                    'Kondisi Kendaraan (Demo)',
+                    'Kondisi Kendaraan',
                     action: 'Lihat Detail',
                     onTap: () => push(context, ObdScreen(state: state)),
                   ),
@@ -860,114 +1785,255 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class LockedObdCard extends StatelessWidget {
+class _HomeQuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _HomeQuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.red, size: 19),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 3),
+            const Icon(Icons.chevron_right, color: AppColors.muted, size: 16),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class LockedObdCard extends StatefulWidget {
   final OtoKuState state;
   const LockedObdCard({super.key, required this.state});
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(16),
-      gradient: const LinearGradient(
-        colors: [Color(0xFF262626), AppColors.darkSurface],
+  State<LockedObdCard> createState() => _LockedObdCardState();
+}
+
+class _LockedObdCardState extends State<LockedObdCard> {
+  late final PageController _controller;
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      SizedBox(
+        height: 104,
+        child: PageView(
+          controller: _controller,
+          onPageChanged: (page) => setState(() => _page = page),
+          children: [
+            _ObdAdSlide(
+              badge: 'BARU',
+              title: 'OtoKu OBD-II Scanner',
+              body: 'Diagnosa & cek voltase aki dari HP',
+              action: 'Lihat',
+              icon: Icons.bluetooth_searching,
+              onTap: () => showObdSheet(context, widget.state),
+            ),
+            _ObdAdSlide(
+              badge: 'FITUR',
+              title: 'Data mesin lebih jelas',
+              body: 'RPM, suhu mesin & kode masalah',
+              action: 'Coba',
+              icon: Icons.insights_outlined,
+              onTap: () => showObdSheet(context, widget.state),
+            ),
+            _ObdAdSlide(
+              badge: 'SHOP',
+              title: 'Lengkapi perawatan',
+              body: 'Sparepart & layanan yang sesuai',
+              action: 'Buka',
+              icon: Icons.shopping_bag_outlined,
+              onTap: () => openTab(context, 1),
+            ),
+          ],
+        ),
       ),
-      boxShadow: [
+      const SizedBox(height: 8),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(
+          3,
+          (index) => AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.only(right: 6),
+            width: index == _page ? 16 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: index == _page ? AppColors.red : AppColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+class _ObdAdSlide extends StatelessWidget {
+  final String badge, title, body, action;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _ObdAdSlide({
+    required this.badge,
+    required this.title,
+    required this.body,
+    required this.action,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      gradient: const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [Color(0xFF18181B), Color(0xFF27272A)],
+      ),
+      border: Border.all(color: const Color(0xFF3F3F46)),
+      boxShadow: const [
         BoxShadow(
-          color: AppColors.red.withValues(alpha: .12),
-          blurRadius: 24,
-          offset: const Offset(0, 5),
+          color: Color(0x1418181B),
+          blurRadius: 8,
+          offset: Offset(0, 2),
         ),
       ],
     ),
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    child: Row(
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: .10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: .15)),
+          ),
+          child: Icon(icon, color: const Color(0xFF34D399), size: 20),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
                 children: [
-                  Text(
-                    'Hubungkan OBD',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        height: 1.15,
+                      ),
                     ),
                   ),
-                  Text(
-                    'Mode simulasi untuk prototipe',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
                     ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'OBD asli belum diaktifkan. Data yang ditampilkan di prototipe adalah simulasi.',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      height: 1.4,
-                      fontSize: 11,
+                    decoration: BoxDecoration(
+                      color: AppColors.redDark,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      badge,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            const OBDIllustration(),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                body,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 11),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: () => showObdSheet(context, state),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.red,
-              foregroundColor: Colors.white,
+        const SizedBox(width: 8),
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: .20)),
             ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
               children: [
-                Text('Lihat demo OBD'),
-                SizedBox(width: 8),
-                Icon(Icons.chevron_right),
+                Text(
+                  action,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_forward, color: Colors.white, size: 13),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        const Row(
-          children: [
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.speed_outlined,
-                label: 'Data simulasi',
-              ),
-            ),
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.manage_search,
-                label: 'Deteksi masalah',
-              ),
-            ),
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.build_outlined,
-                label: 'Rekomendasi servis',
-              ),
-            ),
-            Expanded(
-              child: ObdFeature(
-                icon: Icons.hub_outlined,
-                label: 'Terintegrasi sparepart & bengkel',
-              ),
-            ),
-          ],
         ),
       ],
     ),
@@ -1047,12 +2113,9 @@ class ConnectedObdCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('OBD Aktif', style: TextStyle(fontWeight: FontWeight.w800)),
               Text(
-                'OBD Demo Aktif',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              Text(
-                'Data simulasi — bukan data kendaraan langsung',
+                'Pembacaan mesin terbaru',
                 style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
             ],
@@ -1223,43 +2286,86 @@ class HealthSummary extends StatelessWidget {
 }
 
 class MaintenanceCard extends StatelessWidget {
+  final OtoKuState state;
   final VoidCallback onTap;
-  const MaintenanceCard({super.key, required this.onTap});
+  const MaintenanceCard({super.key, required this.state, required this.onTap});
   @override
-  Widget build(BuildContext context) => CardBox(
-    color: AppColors.redTint,
-    onTap: onTap,
-    child: Row(
-      children: [
-        const CircleAvatar(
-          backgroundColor: Colors.white,
-          child: Icon(Icons.oil_barrel_outlined, color: AppColors.red),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Ganti Oli Mesin',
-                style: TextStyle(fontWeight: FontWeight.w800),
+  Widget build(BuildContext context) {
+    final current = state.vehicle.mileage;
+    // Soonest upcoming goal; a passed target has already rolled to the next
+    // interval, so this switches to whichever item is due first.
+    final upcoming =
+        careTasks
+            .map(
+              (task) => (
+                task,
+                nextCareDueKm(
+                  task: task,
+                  currentKm: current,
+                  doneAtKm: state.maintenanceDoneAt[task.title],
+                ),
               ),
-              const Text(
-                'Dalam 1.550 km',
-                style: TextStyle(color: AppColors.muted, fontSize: 12),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                'Perkiraan: Okt 2025',
-                style: TextStyle(color: AppColors.muted, fontSize: 10),
-              ),
-            ],
+            )
+            .toList()
+          ..sort((a, b) => a.$2.compareTo(b.$2));
+    final (task, due) = upcoming.first;
+    final remaining = due - current;
+    final urgent = remaining <= 500;
+    return CardBox(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: urgent ? AppColors.redTint : AppColors.surfaceLow,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              task.icon,
+              color: urgent ? AppColors.red : AppColors.muted,
+            ),
           ),
-        ),
-        const Icon(Icons.chevron_right, color: AppColors.red),
-      ],
-    ),
-  );
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        task.title,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    StatusChip(
+                      urgent ? 'Segera' : 'Terjadwal',
+                      urgent ? AppColors.red : AppColors.muted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${formatKilometers(remaining)} km lagi · target ${formatKilometers(due)} km',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Jadwal perkiraan · cek buku servis',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: AppColors.muted),
+        ],
+      ),
+    );
+  }
 }
 
 class Metric extends StatelessWidget {
@@ -1302,6 +2408,16 @@ class StatusChip extends StatelessWidget {
 
 void push(BuildContext context, Widget page) =>
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+/// Selected bottom-navigation tab, shared so pushed screens can hand control
+/// back to the tab shell instead of opening a full-screen copy without tabs.
+final appTabIndex = ValueNotifier<int>(0);
+
+void openTab(BuildContext context, int index) {
+  appTabIndex.value = index;
+  Navigator.of(context).popUntil((route) => route.isFirst);
+}
+
 void showObdSheet(BuildContext context, OtoKuState state) =>
     showModalBottomSheet(
       context: context,
@@ -1313,16 +2429,14 @@ void showObdSheet(BuildContext context, OtoKuState state) =>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              state.obdConnected
-                  ? 'OBD OtoKu Terhubung'
-                  : 'Buka data kendaraan real-time',
+              state.obdConnected ? 'OBD aktif' : 'Jelajahi data OBD',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(
               state.obdConnected
-                  ? 'Nikmati pemantauan kondisi kendaraan dan kode masalah secara berkala.'
-                  : 'Dapatkan RPM, suhu mesin, konsumsi BBM, dan deteksi masalah lebih awal.',
+                  ? 'Lihat RPM, suhu mesin, dan kode masalah kendaraanmu.'
+                  : 'Lihat data OBD sebelum menghubungkan perangkat.',
               style: const TextStyle(color: AppColors.muted, height: 1.4),
             ),
             const SizedBox(height: 18),
@@ -1331,9 +2445,7 @@ void showObdSheet(BuildContext context, OtoKuState state) =>
                 state.obdConnected ? state.disconnectObd() : state.connectObd();
                 Navigator.pop(context);
               },
-              child: Text(
-                state.obdConnected ? 'Putuskan OBD' : 'Hubungkan OBD',
-              ),
+              child: Text(state.obdConnected ? 'Tutup' : 'Lihat Data OBD'),
             ),
           ],
         ),
@@ -1356,15 +2468,11 @@ void showNotificationSheet(BuildContext context) {
           SizedBox(height: 18),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.build_circle_outlined, color: AppColors.red),
-            title: Text('Perawatan mendatang'),
-            subtitle: Text('Ganti oli mesin dalam 1.550 km'),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.shopping_bag_outlined),
-            title: Text('Pesanan diproses'),
-            subtitle: Text('Kampas Rem Depan sedang dikemas'),
+            leading: Icon(Icons.notifications_none, color: AppColors.muted),
+            title: Text('Belum ada notifikasi'),
+            subtitle: Text(
+              'Pengingat akan muncul setelah kamu mencatat aktivitas atau pesanan.',
+            ),
           ),
         ],
       ),
@@ -1372,28 +2480,609 @@ void showNotificationSheet(BuildContext context) {
   );
 }
 
-void showVehicleActions(BuildContext context) => showModalBottomSheet<void>(
-  context: context,
-  showDragHandle: true,
-  builder: (_) => const SafeArea(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(
-          leading: Icon(Icons.edit_outlined),
-          title: Text('Ubah Data Kendaraan'),
+class VehicleListScreen extends StatelessWidget {
+  final OtoKuState state;
+  const VehicleListScreen({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: state,
+    builder: (context, _) => Page(
+      title: 'Kendaraan Saya',
+      actions: [
+        IconButton(
+          tooltip: 'Tambah kendaraan',
+          onPressed: () => push(context, AddVehicleScreen(state: state)),
+          icon: const Icon(Icons.add),
         ),
-        ListTile(
-          leading: Icon(Icons.delete_outline, color: AppColors.red),
-          title: Text(
-            'Hapus Kendaraan',
-            style: TextStyle(color: AppColors.red),
+      ],
+      bottomBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            onPressed: () => push(context, AddVehicleScreen(state: state)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.add, size: 19),
+            label: const Text('Tambah Kendaraan'),
+          ),
+        ),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          Text(
+            '${state.vehicles.length} kendaraan terdaftar',
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          for (final (index, item) in state.vehicles.indexed) ...[
+            _VehicleRow(
+              vehicle: item,
+              active: index == state.activeVehicleIndex,
+              onTap: () async {
+                await state.selectVehicle(index);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('${item.name} jadi kendaraan aktif')),
+                );
+              },
+              onOpen: () => push(context, VehicleDetailScreen(state: state)),
+              onEdit: () => push(context, VehicleEditScreen(state: state)),
+              onDelete: state.vehicles.length <= 1
+                  ? null
+                  : () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Hapus kendaraan?'),
+                          content: Text(
+                            '${item.name} akan dihapus dari perangkat ini.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('Batal'),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('Hapus'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true) return;
+                      final removed = await state.removeVehicle(index);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            removed
+                                ? 'Kendaraan dihapus'
+                                : 'Minimal satu kendaraan harus tersisa',
+                          ),
+                        ),
+                      );
+                    },
+            ),
+            const SizedBox(height: 10),
+          ],
+          CardBox(
+            color: AppColors.surfaceLow,
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: AppColors.muted),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Data kendaraan tersimpan di perangkat ini.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehicleRow extends StatelessWidget {
+  final Vehicle vehicle;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+  final VoidCallback? onDelete;
+  const _VehicleRow({
+    required this.vehicle,
+    required this.active,
+    required this.onTap,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active ? AppColors.red : AppColors.border,
+            width: active ? 1.5 : 1,
+          ),
+          boxShadow: _cardShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLow,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                vehicle.brand.toLowerCase().contains('honda') ||
+                        vehicle.brand.toLowerCase().contains('yamaha')
+                    ? Icons.two_wheeler
+                    : Icons.directions_car,
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          vehicle.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      if (active) ...[
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.greenTint,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Aktif',
+                            style: TextStyle(
+                              color: AppColors.green,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${vehicle.plate.isEmpty ? "Tanpa plat" : vehicle.plate} · ${formatKilometers(vehicle.mileage)} km',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    active
+                        ? 'Kendaraan aktif untuk Home, Shop & Peta'
+                        : 'Ketuk untuk jadikan aktif',
+                    style: TextStyle(
+                      color: active ? AppColors.red : AppColors.muted,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Opsi kendaraan',
+              icon: const Icon(Icons.more_vert, color: AppColors.muted),
+              onSelected: (value) {
+                switch (value) {
+                  case 'open':
+                    onOpen();
+                  case 'edit':
+                    onEdit();
+                  case 'delete':
+                    onDelete?.call();
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'open', child: Text('Lihat detail')),
+                const PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+                if (onDelete != null)
+                  const PopupMenuItem(value: 'delete', child: Text('Hapus')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class AddVehicleScreen extends StatefulWidget {
+  final OtoKuState state;
+  const AddVehicleScreen({super.key, required this.state});
+
+  @override
+  State<AddVehicleScreen> createState() => _AddVehicleScreenState();
+}
+
+class _AddVehicleScreenState extends State<AddVehicleScreen> {
+  final _brand = TextEditingController();
+  final _model = TextEditingController();
+  final _variant = TextEditingController(text: 'Belum tahu');
+  final _plate = TextEditingController();
+  final _year = TextEditingController(text: '${DateTime.now().year}');
+  final _mileage = TextEditingController(text: '0');
+  String kind = 'Motor';
+  bool saving = false;
+
+  @override
+  void dispose() {
+    _brand.dispose();
+    _model.dispose();
+    _variant.dispose();
+    _plate.dispose();
+    _year.dispose();
+    _mileage.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (saving) return;
+    final brand = _brand.text.trim();
+    final model = _model.text.trim();
+    final year = int.tryParse(_year.text.trim());
+    final mileage = int.tryParse(_mileage.text.trim());
+    if (brand.isEmpty || model.isEmpty) {
+      _error('Isi merek dan model kendaraan.');
+      return;
+    }
+    if (year == null || year < 1900 || year > DateTime.now().year + 1) {
+      _error('Masukkan tahun kendaraan yang valid.');
+      return;
+    }
+    if (_mileage.text.trim().isNotEmpty && (mileage == null || mileage < 0)) {
+      _error('Masukkan angka kilometer yang valid.');
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await widget.state.addVehicle(
+        Vehicle(
+          brand: brand,
+          model: model,
+          plate: _plate.text.trim(),
+          type: _variant.text.trim().isEmpty
+              ? 'Belum tahu'
+              : _variant.text.trim(),
+          year: year,
+          mileage: mileage ?? 0,
+        ),
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  void _error(String message) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Tambah Kendaraan',
+    bottomBar: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton(
+          onPressed: saving ? null : _save,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          child: Text(saving ? 'Menyimpan...' : 'Simpan Kendaraan'),
+        ),
+      ),
+    ),
+    child: ScrollPage(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Jenis kendaraan',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (final option in ['Motor', 'Mobil'])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(option),
+                    selected: kind == option,
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() => kind = option),
+                    backgroundColor: AppColors.surfaceLow,
+                    selectedColor: AppColors.red,
+                    labelStyle: TextStyle(
+                      color: kind == option ? Colors.white : AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                    side: BorderSide.none,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _VehicleField(
+            key: const ValueKey('vehicle-brand'),
+            controller: _brand,
+            label: 'Merek',
+            hint: 'Honda, Yamaha, Toyota...',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-model'),
+            controller: _model,
+            label: 'Model',
+            hint: 'Beat, NMAX, Avanza...',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-year'),
+            controller: _year,
+            label: 'Tahun',
+            hint: '2021',
+            keyboardType: TextInputType.number,
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-variant'),
+            controller: _variant,
+            label: 'Varian (opsional)',
+            hint: 'CBS, ABS, Deluxe...',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-plate'),
+            controller: _plate,
+            label: 'Plat nomor (opsional)',
+            hint: 'B 1234 XYZ',
+          ),
+          _VehicleField(
+            key: const ValueKey('vehicle-mileage'),
+            controller: _mileage,
+            label: 'Kilometer saat ini (opsional)',
+            hint: '0',
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 6),
+          CardBox(
+            color: AppColors.surfaceLow,
+            child: Text(
+              kind == 'Motor'
+                  ? 'Isi varian bila diketahui. Pilih "Belum tahu" bila belum yakin.'
+                  : 'Isi varian bila diketahui. Pilih "Belum tahu" bila belum yakin.',
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 11,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehicleField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label, hint;
+  final TextInputType? keyboardType;
+  const _VehicleField({
+    super.key,
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.keyboardType,
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          decoration: InputDecoration(
+            hintText: hint,
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.ink, width: 1.5),
+            ),
           ),
         ),
       ],
     ),
-  ),
-);
+  );
+}
+
+class VehicleEditScreen extends StatefulWidget {
+  final OtoKuState state;
+  const VehicleEditScreen({super.key, required this.state});
+  @override
+  State<VehicleEditScreen> createState() => _VehicleEditScreenState();
+}
+
+class _VehicleEditScreenState extends State<VehicleEditScreen> {
+  late final _brand = TextEditingController(text: widget.state.vehicle.brand);
+  late final _model = TextEditingController(text: widget.state.vehicle.model);
+  late final _plate = TextEditingController(text: widget.state.vehicle.plate);
+  late final _type = TextEditingController(text: widget.state.vehicle.type);
+  late final _year = TextEditingController(
+    text: '${widget.state.vehicle.year}',
+  );
+  late final _mileage = TextEditingController(
+    text: '${widget.state.vehicle.mileage}',
+  );
+  bool saving = false;
+
+  @override
+  void dispose() {
+    _brand.dispose();
+    _model.dispose();
+    _plate.dispose();
+    _type.dispose();
+    _year.dispose();
+    _mileage.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final year = int.tryParse(_year.text.trim());
+    final mileage = int.tryParse(_mileage.text.trim());
+    if (_brand.text.trim().isEmpty ||
+        _model.text.trim().isEmpty ||
+        _plate.text.trim().isEmpty ||
+        year == null ||
+        mileage == null ||
+        year < 1900 ||
+        year > DateTime.now().year + 1 ||
+        mileage < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Periksa kembali data kendaraan.')),
+      );
+      return;
+    }
+    if (mileage < widget.state.vehicle.mileage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kilometer baru tidak boleh lebih rendah.'),
+        ),
+      );
+      return;
+    }
+    setState(() => saving = true);
+    await widget.state.updateVehicle(
+      Vehicle(
+        id: widget.state.vehicle.id,
+        brand: _brand.text.trim(),
+        model: _model.text.trim(),
+        plate: _plate.text.trim().toUpperCase(),
+        type: _type.text.trim(),
+        year: year,
+        mileage: mileage,
+      ),
+    );
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Ubah Kendaraan',
+    bottomBar: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton(
+          onPressed: saving ? null : _save,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          child: Text(saving ? 'Menyimpan...' : 'Simpan Perubahan'),
+        ),
+      ),
+    ),
+    child: ScrollPage(
+      child: Column(
+        children: [
+          TextField(
+            controller: _brand,
+            decoration: const InputDecoration(labelText: 'Merek'),
+          ),
+          TextField(
+            controller: _model,
+            decoration: const InputDecoration(labelText: 'Model'),
+          ),
+          TextField(
+            controller: _plate,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'Nomor polisi'),
+          ),
+          TextField(
+            controller: _type,
+            decoration: const InputDecoration(labelText: 'Tipe / varian'),
+          ),
+          TextField(
+            controller: _year,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Tahun'),
+          ),
+          TextField(
+            controller: _mileage,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Kilometer terakhir'),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Nomor rangka dan mesin tidak diminta.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 class VehicleDetailScreen extends StatelessWidget {
   final OtoKuState state;
@@ -1403,8 +3092,9 @@ class VehicleDetailScreen extends StatelessWidget {
     title: 'Detail Kendaraan',
     actions: [
       IconButton(
-        onPressed: () => showVehicleActions(context),
-        icon: const Icon(Icons.more_horiz),
+        tooltip: 'Ubah kendaraan',
+        onPressed: () => push(context, VehicleEditScreen(state: state)),
+        icon: const Icon(Icons.edit_outlined),
       ),
     ],
     child: ScrollPage(
@@ -1412,122 +3102,504 @@ class VehicleDetailScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CardBox(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F1EF),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const VehiclePhoto(height: 190, detail: true),
+                Stack(
+                  children: [
+                    Container(
+                      height: 190,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLow,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child:
+                          state.vehicle.brand == 'Honda' &&
+                              state.vehicle.model.toLowerCase().contains('beat')
+                          ? const VehiclePhoto(height: 190, detail: true)
+                          : const VehicleIllustration(height: 190),
+                    ),
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .90),
+                          shape: BoxShape.circle,
+                          boxShadow: _cardShadow,
+                        ),
+                        child: const Icon(
+                          Icons.zoom_in,
+                          size: 18,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 10,
+                      left: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .95),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'KENDARAAN UTAMA',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: .7,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    state.vehicle.name,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            state.vehicle.name,
+                            style: const TextStyle(
+                              fontFamily: 'Space Grotesk',
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -.4,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${state.vehicle.type} · Data kendaraan',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.ink,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        state.vehicle.plate,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Space Grotesk',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _VehiclePill(
+                      label: 'JARAK TEMPUH',
+                      value: formatKilometers(state.vehicle.mileage),
+                      unit: 'Kilometer',
+                    ),
+                    const SizedBox(width: 6),
+                    _VehiclePill(
+                      label: 'TAHUN',
+                      value: '${state.vehicle.year}',
+                      unit: 'Registrasi',
+                    ),
+                    const SizedBox(width: 6),
+                    _VehiclePill(
+                      label: 'VARIAN',
+                      value: state.vehicle.type,
+                      unit: 'Pabrikan',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          CardBox(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'SPESIFIKASI UNIT',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.two_wheeler, size: 19, color: AppColors.muted),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ...[
+                  ['Merek', state.vehicle.brand],
+                  ['Model', state.vehicle.model],
+                  ['Tahun Pembuatan', '${state.vehicle.year}'],
+                  ['Tipe Varian', state.vehicle.type],
+                  ['Nomor Registrasi (Plat)', state.vehicle.plate],
+                ].map(
+                  (row) => Container(
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: AppColors.surfaceHigh),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            row[0],
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          row[1],
+                          style: TextStyle(
+                            fontFamily: 'Space Grotesk',
+                            fontSize: 13,
+                            fontWeight: row[0].startsWith('Nomor')
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                            letterSpacing: row[0].startsWith('Nomor') ? 1 : 0,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    state.vehicle.plate,
-                    style: const TextStyle(color: AppColors.muted),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                ...[
-                  ['Merek', 'Honda'],
-                  ['Model', 'Beat'],
-                  ['Tahun', '2021'],
-                  ['Tipe', 'CBS'],
-                  ['No. Rangka', 'MH1JM3110MK123456'],
-                  ['No. Mesin', 'JM31E1123456'],
-                ].map((x) => InfoRow(x[0], x[1])),
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F1EF),
+                    color: AppColors.surfaceLow,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    state.vehicle.plate,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.verified_user_outlined,
+                        color: AppColors.red,
+                        size: 19,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Data unit',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Spesifikasi unit tersimpan di perangkat ini.',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 11,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          SectionTitle('Aktivitas kendaraan'),
-          ...[
-            [
-              'Riwayat & Tracking',
-              Icons.timeline,
-              () => push(context, HistoryScreen(state: state)),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Aktivitas & Fitur Kendaraan',
+                  style: TextStyle(
+                    fontFamily: 'Space Grotesk',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.2,
+                  ),
+                ),
+              ),
+              Text(
+                '4 MENU',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1,
+                ),
+              ),
             ],
-            [
-              'Jadwal Perawatan',
-              Icons.event_note,
-              () => push(context, MaintenanceScreen(state: state)),
-            ],
-            [
-              'Data OBD',
-              Icons.sensors,
-              () => state.obdConnected
-                  ? push(context, ObdScreen(state: state))
-                  : showObdSheet(context, state),
-            ],
-          ].map(
-            (x) => CardBox(
-              onTap: x[2] as VoidCallback,
-              child: Row(
+          ),
+          const SizedBox(height: 10),
+          _VehicleMenuTile(
+            icon: Icons.trending_up,
+            iconBg: AppColors.redTint,
+            iconColor: AppColors.red,
+            title: 'Riwayat & Tracking',
+            subtitle: 'Log servis, biaya bensin & catatan',
+            onTap: () => push(context, HistoryScreen(state: state)),
+          ),
+          const SizedBox(height: 8),
+          _VehicleMenuTile(
+            icon: Icons.calendar_month,
+            iconBg: const Color(0xFFFFEDD5),
+            iconColor: const Color(0xFFC2410C),
+            title: 'Jadwal Perawatan',
+            subtitle: 'Ganti oli & cek komponen berkala',
+            badge: 'Jatuh Tempo',
+            onTap: () => push(context, MaintenanceScreen(state: state)),
+          ),
+          const SizedBox(height: 8),
+          _VehicleMenuTile(
+            icon: Icons.sensors,
+            iconBg: const Color(0xFFD1FAE5),
+            iconColor: const Color(0xFF047857),
+            title: 'Data OBD & Telemetri',
+            subtitle: state.obdConnected
+                ? 'OBD aktif · pembacaan terbaru'
+                : 'Belum terhubung',
+            showDot: state.obdConnected,
+            onTap: () => state.obdConnected
+                ? push(context, ObdScreen(state: state))
+                : showObdSheet(context, state),
+          ),
+          const SizedBox(height: 8),
+          _VehicleMenuTile(
+            icon: Icons.edit_note,
+            iconBg: AppColors.surfaceHigh,
+            iconColor: AppColors.ink,
+            title: 'Ubah Data Kendaraan',
+            subtitle: 'Koreksi odometer, plat, atau nama',
+            onTap: () => push(context, VehicleEditScreen(state: state)),
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: () => openTab(context, 2),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.build_circle_outlined, size: 19),
+            label: const Text('Jadwalkan Servis'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehiclePill extends StatelessWidget {
+  final String label, value, unit;
+  const _VehiclePill({
+    required this.label,
+    required this.value,
+    required this.unit,
+  });
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLow,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .6,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Space Grotesk',
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            unit,
+            style: const TextStyle(color: AppColors.muted, fontSize: 9),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _VehicleMenuTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconBg, iconColor;
+  final String title, subtitle;
+  final String? badge;
+  final bool showDot;
+  final VoidCallback onTap;
+  const _VehicleMenuTile({
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+    this.showDot = false,
+  });
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(12),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+          boxShadow: _cardShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(x[1] as IconData, color: AppColors.red),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      x[0] as String,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (showDot) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                      if (badge != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.redTint,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            badge!,
+                            style: const TextStyle(
+                              color: AppColors.red,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
                     ),
                   ),
-                  const Icon(Icons.chevron_right),
                 ],
               ),
             ),
-          ),
-          CardBox(
-            child: const ListTile(
-              leading: Icon(Icons.edit_outlined),
-              title: Text('Ubah Data Kendaraan'),
-              trailing: Icon(Icons.chevron_right),
-            ),
-          ),
-          const SizedBox(height: 8),
-          CardBox(
-            color: AppColors.redTint,
-            child: const ListTile(
-              leading: Icon(Icons.delete_outline, color: AppColors.red),
-              title: Text(
-                'Hapus Kendaraan',
-                style: TextStyle(
-                  color: AppColors.red,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
+            const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
+          ],
+        ),
       ),
     ),
   );
@@ -1574,7 +3646,7 @@ class VehiclePhoto extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFFF1F1EF),
+                  AppColors.surfaceLow,
                   Colors.white.withValues(alpha: .35),
                 ],
               ),
@@ -1855,104 +3927,339 @@ class CarMarkPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class MaintenanceScreen extends StatelessWidget {
+class MaintenanceScreen extends StatefulWidget {
   final OtoKuState state;
   const MaintenanceScreen({super.key, required this.state});
   @override
+  State<MaintenanceScreen> createState() => _MaintenanceScreenState();
+}
+
+class _MaintenanceScreenState extends State<MaintenanceScreen> {
+  String filter = 'Rekomendasi';
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.state.vehicle.mileage;
+    final tasks =
+        careTasks
+            .map(
+              (task) => (
+                task,
+                nextCareDueKm(
+                  task: task,
+                  currentKm: current,
+                  doneAtKm: widget.state.maintenanceDoneAt[task.title],
+                ),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.$2.compareTo(b.$2));
+    final visible = tasks.where((entry) {
+      final done = widget.state.maintenanceDoneAt.containsKey(entry.$1.title);
+      return filter == 'Semua' || (filter == 'Selesai' ? done : true);
+    }).toList();
+    return Page(
+      title: 'Jadwal Perawatan',
+      child: ScrollPage(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              children: ['Rekomendasi', 'Semua', 'Selesai']
+                  .map(
+                    (value) => ChoiceChip(
+                      label: Text(value),
+                      selected: filter == value,
+                      onSelected: (_) => setState(() => filter = value),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Jarak target mengikuti interval servis berkala.',
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            if (visible.isEmpty)
+              const CardBox(
+                child: Text('Belum ada perawatan pada filter ini.'),
+              ),
+            ...visible.map((entry) {
+              final (task, due) = entry;
+              final doneAt = widget.state.maintenanceDoneAt[task.title];
+              final remaining = due - current;
+              final progress = (1 - remaining / task.interval)
+                  .clamp(0.0, 1.0)
+                  .toDouble();
+              return CardBox(
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: AppColors.bg,
+                      child: Icon(task.icon, color: AppColors.red),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            task.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          Text(
+                            '${formatKilometers(remaining)} km lagi · tiap ${formatKilometers(task.interval)} km',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          if (doneAt != null && doneAt > 0)
+                            Text(
+                              'Terakhir dikerjakan di ${formatKilometers(doneAt)} km',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 6,
+                            borderRadius: BorderRadius.circular(8),
+                            color: remaining <= 500
+                                ? AppColors.red
+                                : AppColors.muted,
+                            backgroundColor: AppColors.border,
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${formatKilometers(current)} / ${formatKilometers(due)} km',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Tandai selesai',
+                      onPressed: () =>
+                          widget.state.completeMaintenance(task.title),
+                      icon: const Icon(
+                        Icons.check_circle_outline,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ManualLogScreen extends StatefulWidget {
+  final OtoKuState state;
+  const ManualLogScreen({super.key, required this.state});
+  @override
+  State<ManualLogScreen> createState() => _ManualLogScreenState();
+}
+
+class _ManualLogScreenState extends State<ManualLogScreen> {
+  final _title = TextEditingController();
+  final _value = TextEditingController();
+  final _mileage = TextEditingController();
+  final _volume = TextEditingController();
+  final _notes = TextEditingController();
+  String type = 'Kilometer';
+  bool saving = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _value.dispose();
+    _mileage.dispose();
+    _volume.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (saving) return;
+    final title = _title.text.trim();
+    final value = int.tryParse(_value.text.trim());
+    final mileage = int.tryParse(_mileage.text.trim());
+    final volume = double.tryParse(_volume.text.trim().replaceAll(',', '.'));
+    if (type == 'BBM' &&
+        _volume.text.trim().isNotEmpty &&
+        (volume == null || volume < 0)) {
+      _showError('Masukkan volume BBM yang valid.');
+      return;
+    }
+    if (type != 'Kilometer' &&
+        _value.text.trim().isNotEmpty &&
+        (value == null || value < 0)) {
+      _showError('Masukkan angka biaya yang valid.');
+      return;
+    }
+    if (_mileage.text.trim().isNotEmpty && (mileage == null || mileage < 0)) {
+      _showError('Masukkan angka kilometer yang valid.');
+      return;
+    }
+    if (type != 'Kilometer' &&
+        mileage != null &&
+        mileage < widget.state.vehicle.mileage) {
+      _showError(
+        'Kilometer aktivitas lebih rendah dari catatan kendaraan. Periksa kembali.',
+      );
+      return;
+    }
+    if (type == 'Kilometer') {
+      if (value == null || value < 0) {
+        _showError('Masukkan angka kilometer yang valid.');
+        return;
+      }
+      if (value < widget.state.vehicle.mileage) {
+        _showError(
+          'Kilometer baru tidak boleh lebih rendah dari catatan sebelumnya.',
+        );
+        return;
+      }
+    } else if (title.isEmpty) {
+      _showError('Isi nama aktivitas terlebih dahulu.');
+      return;
+    }
+
+    setState(() => saving = true);
+    try {
+      if (type == 'Kilometer') {
+        await widget.state.updateMileage(value!);
+      } else {
+        await widget.state.addLog({
+          'type': type.toLowerCase(),
+          'title': title,
+          'amount': value,
+          'volume': type == 'BBM' ? volume : null,
+          'mileage': mileage,
+          'notes': _notes.text.trim(),
+          'date': DateTime.now().toIso8601String(),
+          'source': 'manual',
+        });
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) _showError('Catatan belum dapat disimpan. Coba lagi.');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  void _showError(String message) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
+  @override
   Widget build(BuildContext context) => Page(
-    title: 'Jadwal Perawatan',
+    title: 'Catat Aktivitas',
+    bottomBar: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton(
+          onPressed: saving ? null : _save,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          child: Text(saving ? 'Menyimpan...' : 'Simpan Catatan'),
+        ),
+      ),
+    ),
     child: ScrollPage(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Pill('Rekomendasi', active: true),
-              Pill('Semua'),
-              Pill('Selesai'),
-            ],
+          const Text(
+            'Catat tanpa OBD',
+            style: TextStyle(color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: type,
+            decoration: const InputDecoration(labelText: 'Jenis catatan'),
+            items: const ['Kilometer', 'BBM', 'Servis', 'Biaya', 'Sparepart']
+                .map(
+                  (value) => DropdownMenuItem(value: value, child: Text(value)),
+                )
+                .toList(),
+            onChanged: (value) => setState(() => type = value ?? 'Kilometer'),
           ),
           const SizedBox(height: 14),
-          ...[
-            [
-              'Ganti Oli Mesin',
-              'Dalam 1.550 km',
-              '12.450 / 14.000 km',
-              Icons.oil_barrel_outlined,
-            ],
-            [
-              'Cek Kampas Rem',
-              'Dalam 3.000 km',
-              '12.450 / 15.000 km',
-              Icons.disc_full,
-            ],
-            [
-              'Cek Filter Udara',
-              'Dalam 3.000 km',
-              '12.450 / 15.000 km',
-              Icons.filter_alt_outlined,
-            ],
-            [
-              'Cek Busi',
-              'Dalam 5.000 km',
-              '12.450 / 17.500 km',
-              Icons.electrical_services,
-            ],
-            [
-              'Ganti Oli Gear (CVT)',
-              'Dalam 5.000 km',
-              '12.450 / 17.500 km',
-              Icons.settings_outlined,
-            ],
-          ].map(
-            (x) => CardBox(
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: AppColors.bg,
-                    child: Icon(x[3] as IconData, color: AppColors.red),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          x[0] as String,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        Text(
-                          x[1] as String,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: .72,
-                          minHeight: 6,
-                          borderRadius: BorderRadius.circular(8),
-                          color: (x[0] as String) == 'Ganti Oli Mesin'
-                              ? AppColors.red
-                              : const Color(0xFF999A96),
-                          backgroundColor: AppColors.border,
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          x[2] as String,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right),
-                ],
+          if (type != 'Kilometer') ...[
+            TextField(
+              controller: _title,
+              decoration: InputDecoration(
+                labelText: type == 'BBM'
+                    ? 'Jenis BBM / SPBU'
+                    : 'Nama aktivitas',
+                hintText: type == 'BBM'
+                    ? 'Mis. Pertalite'
+                    : 'Mis. Servis berkala',
               ),
             ),
+            const SizedBox(height: 12),
+          ],
+          TextField(
+            key: const ValueKey('log-value'),
+            controller: _value,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: type == 'Kilometer'
+                  ? 'Kilometer terbaru'
+                  : 'Biaya total (opsional)',
+              suffixText: type == 'Kilometer' ? 'km' : 'Rp',
+            ),
+          ),
+          if (type == 'BBM') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _volume,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Volume BBM (opsional)',
+                suffixText: 'liter',
+              ),
+            ),
+          ],
+          if (type != 'Kilometer') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _mileage,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Kilometer saat aktivitas (opsional)',
+                suffixText: 'km',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _notes,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Catatan tambahan (opsional)',
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text(
+            'Kendaraan: ${widget.state.vehicle.name}',
+            style: const TextStyle(color: AppColors.muted),
           ),
         ],
       ),
@@ -1969,6 +4276,13 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryState extends State<HistoryScreen> {
   int tab = 0;
+
+  List<num> _valuesForTab() => widget.state.logs.reversed
+      .map((log) => tab == 1 ? (log['mileage'] ?? log['value']) : log['amount'])
+      .whereType<num>()
+      .where((value) => value > 0)
+      .toList();
+
   @override
   Widget build(BuildContext context) => Page(
     title: 'Riwayat & Tracking',
@@ -1990,11 +4304,20 @@ class _HistoryState extends State<HistoryScreen> {
           ),
           const SizedBox(height: 18),
           if (tab == 0)
-            const ServiceTimeline()
+            ServiceTimeline(state: widget.state)
+          else if (_valuesForTab().length < 2)
+            CardBox(
+              child: Text(
+                _valuesForTab().isEmpty
+                    ? 'Belum ada cukup catatan untuk membuat grafik.'
+                    : 'Tambahkan satu catatan lagi untuk melihat tren.',
+                style: const TextStyle(color: AppColors.muted),
+              ),
+            )
           else
             ChartPanel(
               title: tab == 1 ? 'Tren jarak tempuh' : 'Pengeluaran perawatan',
-              cost: tab == 2,
+              values: _valuesForTab(),
             ),
         ],
       ),
@@ -2003,79 +4326,82 @@ class _HistoryState extends State<HistoryScreen> {
 }
 
 class ServiceTimeline extends StatelessWidget {
-  const ServiceTimeline({super.key});
+  final OtoKuState state;
+  const ServiceTimeline({super.key, required this.state});
+
   @override
-  Widget build(BuildContext context) => const Column(
-    children: [
-      TimelineGroup(
-        date: 'Hari ini',
-        mileage: '12.450 km',
-        today: true,
-        items: [
-          TimelineItem(
-            icon: Icons.local_gas_station_outlined,
-            title: 'Isi Pertalite',
-            detail: '8,2 L (Rp 6.100/L) · 12.450 km',
-            price: 'Rp 50.000',
+  Widget build(BuildContext context) {
+    if (state.logs.isEmpty) {
+      return const CardBox(
+        child: Text(
+          'Belum ada riwayat. Catatan yang kamu buat akan tersimpan di sini.',
+        ),
+      );
+    }
+    return Column(
+      children: state.logs.map((log) {
+        final type = (log['type'] ?? 'catatan').toString();
+        final amount = log['amount'];
+        final mileage = log['mileage'] ?? log['value'];
+        final notes = (log['notes'] ?? '').toString();
+        final date = DateTime.tryParse((log['date'] ?? '').toString());
+        final dateLabel = date == null
+            ? 'Tanggal tidak tersedia'
+            : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+        final volume = log['volume'];
+        final details = <String>[
+          if (volume is num) '${volume.toStringAsFixed(1)} L',
+          if (mileage is num) '${formatKilometers(mileage.toInt())} km',
+          if (amount is num && amount > 0)
+            'Rp ${formatKilometers(amount.toInt())}',
+          if (notes.isNotEmpty) notes,
+          if (log['source'] == 'manual') 'Dicatat manual',
+        ];
+        final icon = switch (type) {
+          'bbm' => Icons.local_gas_station_outlined,
+          'servis' => Icons.build_outlined,
+          'biaya' => Icons.payments_outlined,
+          'sparepart' => Icons.tire_repair_outlined,
+          _ => Icons.speed_outlined,
+        };
+        return CardBox(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: AppColors.red),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (log['title'] ?? 'Catatan').toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      dateLabel,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (details.isNotEmpty)
+                      Text(
+                        details.join(' · '),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          TimelineItem(
-            icon: Icons.build_outlined,
-            title: 'Servis Rutin',
-            detail: 'Ganti oli mesin · Cek filter udara · Cek CVT · 12.100 km',
-            price: 'Rp 80.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '10 Jul 2025',
-        mileage: '11.800 km',
-        items: [
-          TimelineItem(
-            icon: Icons.local_gas_station_outlined,
-            title: 'Isi Pertalite',
-            detail: '8,1 L (Rp 6.150/L) · 11.800 km',
-            price: 'Rp 50.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '15 Jun 2025',
-        mileage: '11.200 km',
-        items: [
-          TimelineItem(
-            icon: Icons.tire_repair_outlined,
-            title: 'Ganti Kampas Rem',
-            detail: '11.200 km',
-            price: 'Rp 120.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '20 Apr 2025',
-        mileage: '10.500 km',
-        items: [
-          TimelineItem(
-            icon: Icons.local_gas_station_outlined,
-            title: 'Isi Pertalite',
-            detail: '8,3 L (Rp 6.000/L) · 10.500 km',
-            price: 'Rp 50.000',
-          ),
-        ],
-      ),
-      TimelineGroup(
-        date: '12 Mar 2025',
-        mileage: '9.800 km',
-        items: [
-          TimelineItem(
-            icon: Icons.build_outlined,
-            title: 'Servis Rutin',
-            detail: 'Ganti oli mesin · Cek filter udara',
-            price: 'Rp 80.000',
-          ),
-        ],
-      ),
-    ],
-  );
+        );
+      }).toList(),
+    );
+  }
 }
 
 class TimelineGroup extends StatelessWidget {
@@ -2106,7 +4432,7 @@ class TimelineGroup extends StatelessWidget {
                   color: today ? AppColors.red : const Color(0xFF9B9B96),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: today ? AppColors.redTint : const Color(0xFFE8E8E8),
+                    color: today ? AppColors.redTint : AppColors.surfaceHigh,
                     width: 3,
                   ),
                 ),
@@ -2114,7 +4440,7 @@ class TimelineGroup extends StatelessWidget {
               Container(
                 width: 1.5,
                 height: items.length > 1 ? 142 : 92,
-                color: const Color(0xFFE1E1DD),
+                color: AppColors.surfaceHigh,
               ),
             ],
           ),
@@ -2170,10 +4496,10 @@ class TimelineItem extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: const Color(0xFFF0F0EE),
+          color: AppColors.surfaceLow,
           borderRadius: BorderRadius.circular(9),
         ),
-        child: Icon(icon, color: const Color(0xFF5F605C), size: 18),
+        child: Icon(icon, color: AppColors.muted, size: 18),
       ),
       const SizedBox(width: 9),
       Expanded(
@@ -2207,8 +4533,8 @@ class TimelineItem extends StatelessWidget {
 
 class ChartPanel extends StatelessWidget {
   final String title;
-  final bool cost;
-  const ChartPanel({super.key, required this.title, required this.cost});
+  final List<num> values;
+  const ChartPanel({super.key, required this.title, required this.values});
   @override
   Widget build(BuildContext c) => CardBox(
     child: Column(
@@ -2219,20 +4545,14 @@ class ChartPanel extends StatelessWidget {
         SizedBox(
           height: 180,
           child: CustomPaint(
-            painter: ChartPainter(cost: cost),
+            painter: ChartPainter(values: values),
             child: const SizedBox.expand(),
           ),
         ),
         const SizedBox(height: 10),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Text('Jun'),
-            Text('Jul'),
-            Text('Agu'),
-            Text('Sep'),
-            Text('Okt'),
-          ],
+        Text(
+          '${values.length} catatan',
+          style: const TextStyle(color: AppColors.muted, fontSize: 11),
         ),
       ],
     ),
@@ -2240,8 +4560,8 @@ class ChartPanel extends StatelessWidget {
 }
 
 class ChartPainter extends CustomPainter {
-  final bool cost;
-  ChartPainter({required this.cost});
+  final List<num> values;
+  ChartPainter({required this.values});
   @override
   void paint(Canvas c, Size s) {
     final line = Paint()
@@ -2259,7 +4579,17 @@ class ChartPainter extends CustomPainter {
         grid,
       );
     }
-    final points = [.72, .55, .62, .3, .42];
+    final minValue = values.reduce(math.min).toDouble();
+    final maxValue = values.reduce(math.max).toDouble();
+    final points = values
+        .map(
+          (value) => maxValue == minValue
+              ? .5
+              : .88 -
+                    ((value.toDouble() - minValue) / (maxValue - minValue)) *
+                        .76,
+        )
+        .toList();
     final path = Path()..moveTo(10, s.height * points[0]);
     for (var i = 1; i < points.length; i++) {
       final x = 10 + (s.width - 20) * i / (points.length - 1);
@@ -2277,7 +4607,8 @@ class ChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant ChartPainter oldDelegate) =>
+      oldDelegate.values.toString() != values.toString();
 }
 
 class ObdScreen extends StatelessWidget {
@@ -2310,11 +4641,11 @@ class ObdScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'OBD Terhubung',
+                      'OBD Aktif',
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     Text(
-                      'Terakhir update: 2 menit yang lalu',
+                      'Pembacaan terbaru',
                       style: TextStyle(color: AppColors.muted, fontSize: 12),
                     ),
                   ],
@@ -2325,7 +4656,7 @@ class ObdScreen extends StatelessWidget {
           const SizedBox(height: 16),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [Pill('Simulasi', active: true), Pill('Diagnostik')],
+            children: [Pill('Live', active: true), Pill('Diagnostik')],
           ),
           const SizedBox(height: 16),
           MetricGrid(onTap: () {}),
@@ -2342,7 +4673,7 @@ class ObdScreen extends StatelessWidget {
               Expanded(child: HealthItem('1 Kode Masalah', 'P0301', false)),
             ],
           ),
-          const SectionTitle('Kode Masalah (DTC)'),
+          const SectionTitle('Kode Masalah'),
           CardBox(
             onTap: () => showRecommendation(c),
             child: const ListTile(
@@ -2352,7 +4683,7 @@ class ObdScreen extends StatelessWidget {
                 'P0301',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
-              subtitle: Text('Cylinder 1 Misfire Detected'),
+              subtitle: Text('Misfire terdeteksi. Perlu pemeriksaan bengkel.'),
               trailing: StatusChip('Sedang', AppColors.amber),
             ),
           ),
@@ -2370,7 +4701,7 @@ class HealthItem extends StatelessWidget {
   Widget build(BuildContext c) => ListTile(
     contentPadding: EdgeInsets.zero,
     leading: CircleAvatar(
-      backgroundColor: ok ? const Color(0xFFDDF5E3) : const Color(0xFFFFE6E6),
+      backgroundColor: ok ? AppColors.greenTint : AppColors.redTint,
       child: Icon(
         ok ? Icons.check : Icons.warning,
         color: ok ? AppColors.green : AppColors.red,
@@ -2436,25 +4767,16 @@ class _CatalogState extends State<CatalogScreen> {
   String query = '', cat = 'Semua';
   @override
   Widget build(BuildContext c) {
-    final cats = [
-      'Semua',
-      'Sparepart',
-      'Oli & Cairan',
-      'Aksesori',
-      'Perangkat OBD',
-      'Rem',
-      'Filter',
-      'Aki',
-    ];
     final list = widget.state.products
         .where(
           (p) =>
               (cat == 'Semua' ||
                   p.category == cat ||
-                  (cat == 'Sparepart' &&
-                      !['Aksesori', 'Perangkat OBD'].contains(p.category))) &&
+                  (cat == 'Sparepart' && p.category != 'Aksesori')) &&
               (query.isEmpty ||
-                  p.name.toLowerCase().contains(query.toLowerCase())),
+                  '${p.name} ${p.category}'.toLowerCase().contains(
+                    query.toLowerCase().trim(),
+                  )),
         )
         .toList();
     return SafeArea(
@@ -2465,9 +4787,36 @@ class _CatalogState extends State<CatalogScreen> {
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: Row(
                 children: [
-                  const Text(
-                    'Shop',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Toko',
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.4,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            size: 13,
+                            color: AppColors.red,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            widget.state.vehicle.name,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   const Spacer(),
                   if (widget.state.cart.isNotEmpty)
@@ -2491,7 +4840,10 @@ class _CatalogState extends State<CatalogScreen> {
                   onChanged: (x) => setState(() => query = x),
                   decoration: InputDecoration(
                     hintText: 'Cari produk...',
-                    prefixIcon: const Icon(Icons.search),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: AppColors.muted,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -2504,109 +4856,319 @@ class _CatalogState extends State<CatalogScreen> {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: cats
-                        .map(
-                          (x) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: GestureDetector(
-                              onTap: () => setState(() => cat = x),
-                              child: Pill(x, active: cat == x),
-                            ),
-                          ),
-                        )
-                        .toList(),
+                    children:
+                        [
+                              'Semua',
+                              'Sparepart',
+                              'Oli & Cairan',
+                              'Rem',
+                              'Filter',
+                              'Aki',
+                              'Aksesori',
+                            ]
+                            .map(
+                              (value) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(value),
+                                  selected: cat == value,
+                                  showCheckmark: false,
+                                  onSelected: (_) =>
+                                      setState(() => cat = value),
+                                  backgroundColor: AppColors.surfaceLow,
+                                  selectedColor: AppColors.red,
+                                  labelStyle: TextStyle(
+                                    color: cat == value
+                                        ? Colors.white
+                                        : AppColors.muted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                  side: BorderSide.none,
+                                  shape: const StadiumBorder(),
+                                ),
+                              ),
+                            )
+                            .toList(),
                   ),
                 ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Kategori',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                ),
-                const SizedBox(height: 10),
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 4,
-                  childAspectRatio: .82,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  children:
-                      [
-                            ['Oli & Cairan', Icons.oil_barrel_outlined],
-                            ['Rem', Icons.disc_full],
-                            ['Filter', Icons.filter_alt_outlined],
-                            ['Aki', Icons.battery_full],
-                            ['Lampu', Icons.lightbulb_outline],
-                            ['Body Part', Icons.two_wheeler],
-                            ['CVT', Icons.settings_outlined],
-                            ['Lainnya', Icons.more_horiz],
-                          ]
-                          .map(
-                            (x) => InkWell(
-                              onTap: () => setState(
-                                () => cat =
-                                    [
-                                      'Body Part',
-                                      'CVT',
-                                      'Lainnya',
-                                    ].contains(x[0])
-                                    ? 'Semua'
-                                    : x[0] as String,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Column(
-                                children: [
-                                  Container(
-                                    width: 52,
-                                    height: 52,
-                                    decoration: BoxDecoration(
+                const SizedBox(height: 12),
+                Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: const LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [Color(0xFF18181B), Color(0xFF27272A)],
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x1418181B),
+                        blurRadius: 24,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -24,
+                        bottom: -24,
+                        child: Container(
+                          width: 144,
+                          height: 144,
+                          decoration: BoxDecoration(
+                            color: AppColors.red.withValues(alpha: .25),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.red,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Text(
+                                    'UNGGULAN',
+                                    style: TextStyle(
                                       color: Colors.white,
-                                      border: Border.all(
-                                        color: AppColors.border,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      x[1] as IconData,
-                                      color: AppColors.ink,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: .6,
                                     ),
                                   ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    x[0] as String,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      color: AppColors.muted,
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: .10),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.bluetooth,
+                                        size: 12,
+                                        color: Color(0xFF34D399),
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Plug & Play BLE',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Pantau Mesin Real-Time dengan OtoKu OBD-II',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.25,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Pantau mesin, suhu, dan voltase aki langsung dari smartphone.',
+                                        style: TextStyle(
+                                          color: Color(0xFFD4D4D8),
+                                          fontSize: 11,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: .10),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: .10,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.memory,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.only(top: 8),
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  top: BorderSide(color: Color(0x1AFFFFFF)),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Rp 179.000',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Termasuk panduan pemakaian',
+                                          style: TextStyle(
+                                            color: Color(0xFF34D399),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () =>
+                                        showObdSheet(c, widget.state),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppColors.red,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 9,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Text(
+                                      'Lihat',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    label: const Icon(
+                                      Icons.shopping_bag_outlined,
+                                      size: 15,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          )
-                          .toList(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 SectionTitle(
-                  'Produk untuk kendaraan aktif',
-                  action: 'Lihat semua',
+                  'Produk (${list.length})',
+                  action: query.isNotEmpty || cat != 'Semua'
+                      ? 'Hapus filter'
+                      : null,
+                  onTap: () => setState(() {
+                    query = '';
+                    cat = 'Semua';
+                  }),
                 ),
                 const Text(
-                  'Kecocokan hanya ditandai jika sudah dikonfirmasi.',
+                  'Produk pilihan untuk kendaraan aktifmu.',
                   style: TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 10),
-                ...list.map(
-                  (p) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: ProductCard(
-                      p: p,
-                      onTap: () => push(
-                        c,
-                        ProductDetailScreen(state: widget.state, product: p),
+                if (list.isEmpty)
+                  CardBox(
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.search_off_outlined,
+                          size: 34,
+                          color: AppColors.muted,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Produk tidak ditemukan',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Coba kata kunci atau kategori lain.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.muted),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            query = '';
+                            cat = 'Semua';
+                          }),
+                          child: const Text('Tampilkan semua produk'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...list.map(
+                    (p) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: ProductCard(
+                        p: p,
+                        vehicleName: widget.state.vehicle.name,
+                        onAdd: () {
+                          widget.state.add(p);
+                          ScaffoldMessenger.of(c).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${p.name} ditambahkan ke keranjang',
+                              ),
+                            ),
+                          );
+                        },
+                        onTap: () => push(
+                          c,
+                          ProductDetailScreen(state: widget.state, product: p),
+                        ),
                       ),
                     ),
                   ),
-                ),
               ]),
             ),
           ),
@@ -2618,14 +5180,23 @@ class _CatalogState extends State<CatalogScreen> {
 
 class ProductCard extends StatelessWidget {
   final Product p;
+  final String vehicleName;
   final VoidCallback onTap;
-  const ProductCard({super.key, required this.p, required this.onTap});
+  final VoidCallback onAdd;
+  const ProductCard({
+    super.key,
+    required this.p,
+    required this.vehicleName,
+    required this.onTap,
+    required this.onAdd,
+  });
   @override
   Widget build(BuildContext c) => CardBox(
     onTap: onTap,
+    padding: const EdgeInsets.all(10),
     child: Row(
       children: [
-        ProductArt(icon: p.icon),
+        ProductArt(icon: p.icon, image: p.imageAsset, size: 80),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -2634,9 +5205,8 @@ class ProductCard extends StatelessWidget {
               Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800)),
               Text(
                 switch (p.fitment) {
-                  ProductFitment.confirmed => 'Cocok untuk Honda Beat 2021',
-                  ProductFitment.possibleUnverified =>
-                    'Kecocokan belum diverifikasi',
+                  ProductFitment.confirmed => 'Cocok untuk $vehicleName',
+                  ProductFitment.possibleUnverified => 'Cek kompatibilitas',
                   ProductFitment.incompatible =>
                     'Tidak cocok untuk kendaraan ini',
                   ProductFitment.unknown => 'Kompatibilitas belum diketahui',
@@ -2650,7 +5220,7 @@ class ProductCard extends StatelessWidget {
                   fontSize: 11,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Text(
                 p.price,
                 style: const TextStyle(
@@ -2658,10 +5228,27 @@ class ProductCard extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
+              const Text(
+                'Stok tersedia',
+                style: TextStyle(color: AppColors.muted, fontSize: 10),
+              ),
             ],
           ),
         ),
-        const Icon(Icons.chevron_right),
+        const SizedBox(width: 8),
+        IconButton.filled(
+          tooltip: 'Tambah ${p.name} ke keranjang',
+          onPressed: onAdd,
+          style: IconButton.styleFrom(
+            backgroundColor: AppColors.red,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(40, 40),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(11),
+            ),
+          ),
+          icon: const Icon(Icons.add_shopping_cart, size: 18),
+        ),
       ],
     ),
   );
@@ -2669,16 +5256,29 @@ class ProductCard extends StatelessWidget {
 
 class ProductArt extends StatelessWidget {
   final String icon;
-  const ProductArt({super.key, required this.icon});
+  final String? image;
+  final double size;
+  const ProductArt({super.key, required this.icon, this.image, this.size = 68});
   @override
   Widget build(BuildContext c) => Container(
-    width: 68,
-    height: 68,
+    width: size,
+    height: size,
     decoration: BoxDecoration(
-      color: const Color(0xFFF2F1ED),
+      color: AppColors.surfaceLow,
       borderRadius: BorderRadius.circular(14),
     ),
-    child: CustomPaint(painter: PartPainter(icon)),
+    child: image == null || image!.isEmpty
+        ? CustomPaint(painter: PartPainter(icon))
+        : Padding(
+            padding: const EdgeInsets.all(5),
+            child: Image.asset(
+              image!,
+              fit: BoxFit.contain,
+              semanticLabel: 'Foto produk',
+              errorBuilder: (_, _, _) =>
+                  CustomPaint(painter: PartPainter(icon)),
+            ),
+          ),
   );
 }
 
@@ -2905,18 +5505,15 @@ class ProductDetailScreen extends StatelessWidget {
                         Container(
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFECEDEA),
+                            color: AppColors.surfaceLow,
                             borderRadius: BorderRadius.circular(18),
                           ),
-                          child: Center(
-                            child: Icon(
-                              product.icon == 'brake'
-                                  ? Icons.disc_full
-                                  : product.icon == 'oil'
-                                  ? Icons.oil_barrel_outlined
-                                  : Icons.build_circle_outlined,
-                              size: 116,
-                              color: const Color(0xFF454743),
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Image.asset(
+                              product.imageAsset,
+                              fit: BoxFit.contain,
+                              semanticLabel: 'Foto ${product.name}',
                             ),
                           ),
                         ),
@@ -2928,44 +5525,7 @@ class ProductDetailScreen extends StatelessWidget {
                             onTap: () => Navigator.pop(c),
                           ),
                         ),
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: CircleIconButton(
-                            icon: Icons.favorite_border,
-                            onTap: () {},
-                          ),
-                        ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: List.generate(
-                      5,
-                      (i) => Expanded(
-                        child: Container(
-                          height: 48,
-                          margin: EdgeInsets.only(right: i == 4 ? 0 : 7),
-                          decoration: BoxDecoration(
-                            color: i == 0
-                                ? const Color(0xFFECEDEA)
-                                : Colors.white,
-                            border: Border.all(
-                              color: i == 0 ? AppColors.ink : AppColors.border,
-                              width: i == 0 ? 1.5 : 1,
-                            ),
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                          child: Icon(
-                            product.icon == 'brake'
-                                ? Icons.disc_full
-                                : Icons.build,
-                            size: 22,
-                            color: AppColors.muted,
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -2976,16 +5536,11 @@ class ProductDetailScreen extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const Text(
-                    'Honda Beat · Honda Genuine Parts',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '★ 4.8 (120 ulasan)',
-                    style: TextStyle(
-                      color: AppColors.amber,
-                      fontWeight: FontWeight.w700,
+                  Text(
+                    '${product.category} · Katalog produk',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 13,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -3000,21 +5555,10 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      if (product.fitment == ProductFitment.confirmed)
-                        const StatusChip('Stok tersedia', AppColors.green),
+                      const SizedBox.shrink(),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  if (product.fitment == ProductFitment.unknown ||
-                      product.fitment == ProductFitment.possibleUnverified)
-                    CardBox(
-                      child: Text(
-                        product.fitment == ProductFitment.possibleUnverified
-                            ? 'Kecocokan produk ini belum diverifikasi untuk kendaraan Anda.'
-                            : 'Informasi kompatibilitas belum tersedia.',
-                        style: const TextStyle(color: AppColors.muted),
-                      ),
-                    ),
                   if (product.fitment == ProductFitment.incompatible)
                     const CardBox(
                       color: AppColors.redTint,
@@ -3026,26 +5570,12 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (product.fitment == ProductFitment.confirmed)
-                    const Column(
-                      children: [
-                        FeatureRow(
-                          icon: Icons.verified_outlined,
-                          title: '100% Original',
-                          subtitle: 'Garansi resmi',
-                        ),
-                        FeatureRow(
-                          icon: Icons.build_outlined,
-                          title: 'Bisa pasang di bengkel',
-                          subtitle: 'Rekomendasi OtoKu',
-                        ),
-                        FeatureRow(
-                          icon: Icons.local_shipping_outlined,
-                          title: 'Pengiriman cepat',
-                          subtitle: '1–2 hari',
-                        ),
-                      ],
+                  const CardBox(
+                    child: Text(
+                      'Produk dikirim dari mitra OtoKu terdekat.',
+                      style: TextStyle(color: AppColors.muted, height: 1.4),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -3137,67 +5667,719 @@ class FeatureRow extends StatelessWidget {
   );
 }
 
-class WorkshopListScreen extends StatelessWidget {
+class WorkshopListScreen extends StatefulWidget {
   final OtoKuState state;
   const WorkshopListScreen({super.key, required this.state});
   @override
-  Widget build(BuildContext c) => SafeArea(
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'Peta',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Demo area Bekasi Utara • data tempat contoh',
-          style: TextStyle(color: AppColors.muted),
-        ),
-        const SizedBox(height: 12),
-        const CardBox(
-          color: Color(0xFFFFF7E6),
-          child: Text(
-            'Peta dan lokasi langsung belum terhubung. Cari berdasarkan area untuk melihat data demo.',
-            style: TextStyle(fontSize: 12),
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          decoration: InputDecoration(
-            hintText: 'Cari tempat atau area...',
-            prefixIcon: const Icon(Icons.search),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderSide: BorderSide.none,
-              borderRadius: BorderRadius.circular(14),
+  State<WorkshopListScreen> createState() => _WorkshopListScreenState();
+}
+
+class _WorkshopListScreenState extends State<WorkshopListScreen> {
+  String category = 'Semua';
+  String query = '';
+
+  List<Workshop> get filtered => widget.state.workshops.where((place) {
+    final matchesCategory = switch (category) {
+      'Semua' => true,
+      'Bengkel partner' => place.category == 'Bengkel' && place.partner,
+      'Bengkel non-partner' => place.category == 'Bengkel' && !place.partner,
+      _ => place.category == category,
+    };
+    final search =
+        '${place.name} ${place.category} ${place.address} ${place.services}'
+            .toLowerCase();
+    return matchesCategory && search.contains(query.toLowerCase().trim());
+  }).toList();
+
+  @override
+  Widget build(BuildContext c) => Material(
+    color: AppColors.bg,
+    child: SafeArea(
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Peta & Tempat',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -.3,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'BINUS Bekasi · area sekitar',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const CircleAvatar(
+                    radius: 18,
+                    backgroundColor: AppColors.red,
+                    child: Text(
+                      'OK',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Pill('Semua', active: true),
-            Pill('Terdekat'),
-            Pill('Terbaik'),
-          ],
-        ),
-        const SizedBox(height: 16),
-        ...state.workshops.map(
-          (w) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: WorkshopCard(
-              w: w,
-              onTap: () =>
-                  push(c, WorkshopDetailScreen(state: state, workshop: w)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  PlaceMapView(
+                    places: filtered,
+                    onOpen: (place) => push(
+                      c,
+                      WorkshopDetailScreen(
+                        state: widget.state,
+                        workshop: place,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    top: 12,
+                    child: Material(
+                      elevation: 3,
+                      shadowColor: AppColors.ink.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(14),
+                      child: TextField(
+                        onChanged: (value) => setState(() => query = value),
+                        decoration: InputDecoration(
+                          hintText: 'Cari bengkel, SPBU, minimarket...',
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: AppColors.muted,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide.none,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 56,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                scrollDirection: Axis.horizontal,
+                children:
+                    [
+                          'Semua',
+                          'Bengkel partner',
+                          'Bengkel non-partner',
+                          'Minimarket',
+                          'SPBU',
+                        ]
+                        .map(
+                          (value) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(value),
+                              selected: category == value,
+                              showCheckmark: false,
+                              onSelected: (_) =>
+                                  setState(() => category = value),
+                              backgroundColor: Colors.white,
+                              selectedColor: AppColors.redTint,
+                              labelStyle: TextStyle(
+                                color: category == value
+                                    ? AppColors.red
+                                    : AppColors.muted,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                              side: BorderSide(
+                                color: category == value
+                                    ? AppColors.red.withValues(alpha: .25)
+                                    : AppColors.border,
+                              ),
+                              shape: const StadiumBorder(),
+                            ),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+            sliver: SliverList.list(
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '${filtered.length} tempat',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Text(
+                      'Area Bekasi & Sekitarnya',
+                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (filtered.isEmpty)
+                  const CardBox(
+                    child: Text('Tempat tidak ditemukan. Coba filter lain.'),
+                  ),
+                ...filtered.map(
+                  (place) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: WorkshopCard(
+                      w: place,
+                      onTap: () => push(
+                        c,
+                        WorkshopDetailScreen(
+                          state: widget.state,
+                          workshop: place,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Map anchor used for the first camera position and sample framing.
+const defaultMapLat = -6.2196; // BINUS Bekasi
+const defaultMapLng = 106.9995;
+gmaps.LatLng get googleMapCenter =>
+    const gmaps.LatLng(defaultMapLat, defaultMapLng);
+ll.LatLng get osmMapCenter => const ll.LatLng(defaultMapLat, defaultMapLng);
+
+/// Boundary between the Peta UI and a map SDK (PRD §3), so Google Maps can be
+/// swapped without rewriting screens.
+abstract interface class MapProvider {
+  bool get isLive;
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  });
+}
+
+/// Real map. Needs a Maps SDK key in `.env` (Android) and a supported platform.
+class GoogleMapsProvider implements MapProvider {
+  const GoogleMapsProvider();
+
+  @override
+  bool get isLive => true;
+
+  @override
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  }) => GoogleMapView(places: places, onOpen: onOpen);
+}
+
+/// Real OpenStreetMap tiles. Works on every platform and needs no key, so the
+/// prototype stays usable while the Google Maps key/billing is being sorted out.
+/// Tile use, attribution, and caching must be reviewed before production.
+class OsmMapProvider implements MapProvider {
+  const OsmMapProvider();
+
+  @override
+  bool get isLive => true;
+
+  @override
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  }) => OsmMapView(places: places, onOpen: onOpen);
+}
+
+/// Pure illustration, kept for offline previews (`MAP_PROVIDER=illustrated`).
+class IllustratedMapProvider implements MapProvider {
+  const IllustratedMapProvider();
+
+  @override
+  bool get isLive => false;
+
+  @override
+  Widget build({
+    required List<Workshop> places,
+    required ValueChanged<Workshop> onOpen,
+  }) => IllustratedMapPreview(places: places, onOpen: onOpen);
+}
+
+/// `MAP_PROVIDER` in `.env` overrides selection: `google`, `osm`, `illustrated`.
+MapProvider resolveMapProvider() {
+  final override = dotenv.isInitialized
+      ? (dotenv.maybeGet('MAP_PROVIDER') ?? '').trim().toLowerCase()
+      : '';
+  if (override == 'illustrated') return const IllustratedMapProvider();
+  if (override == 'google') return const GoogleMapsProvider();
+  if (override == 'osm') return const OsmMapProvider();
+
+  // Default to OSM tiles: they render on every platform without a key or
+  // billing. Once Google Maps billing is active, set MAP_PROVIDER=google.
+  return const OsmMapProvider();
+}
+
+class OsmMapView extends StatefulWidget {
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const OsmMapView({super.key, required this.places, required this.onOpen});
+
+  @override
+  State<OsmMapView> createState() => _OsmMapViewState();
+}
+
+class _OsmMapViewState extends State<OsmMapView> {
+  final fmap.MapController _controller = fmap.MapController();
+
+  void _recenter() => _controller.move(osmMapCenter, 15);
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(22),
+    child: SizedBox(
+      height: 230,
+      child: Stack(
+        children: [
+          fmap.FlutterMap(
+            mapController: _controller,
+            options: const fmap.MapOptions(
+              initialCenter: ll.LatLng(defaultMapLat, defaultMapLng),
+              initialZoom: 15,
+              minZoom: 4,
+              maxZoom: 18,
+              interactionOptions: fmap.InteractionOptions(
+                flags: fmap.InteractiveFlag.all & ~fmap.InteractiveFlag.rotate,
+              ),
+            ),
+            children: [
+              fmap.TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.otoku',
+                maxNativeZoom: 19,
+              ),
+              fmap.MarkerLayer(
+                markers: [
+                  fmap.Marker(
+                    point: osmMapCenter,
+                    width: 74,
+                    height: 44,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: AppColors.ink,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.school,
+                            color: Colors.white,
+                            size: 13,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .92),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'BINUS',
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  for (final place in widget.places)
+                    fmap.Marker(
+                      point: ll.LatLng(place.lat, place.lng),
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.topCenter,
+                      child: GestureDetector(
+                        onTap: () => widget.onOpen(place),
+                        child: Icon(
+                          Icons.location_on,
+                          color: place.partner ? AppColors.red : AppColors.ink,
+                          size: place.partner ? 34 : 30,
+                          semanticLabel: place.name,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const fmap.RichAttributionWidget(
+                alignment: fmap.AttributionAlignment.bottomLeft,
+                attributions: [
+                  fmap.TextSourceAttribution('OpenStreetMap contributors'),
+                ],
+              ),
+            ],
+          ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: IconButton(
+                tooltip: 'Pusatkan peta',
+                onPressed: _recenter,
+                icon: const Icon(
+                  Icons.my_location,
+                  color: AppColors.ink,
+                  size: 19,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Chooses a map implementation once per screen and keeps it for the session.
+class PlaceMapView extends StatefulWidget {
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const PlaceMapView({super.key, required this.places, required this.onOpen});
+
+  @override
+  State<PlaceMapView> createState() => _PlaceMapViewState();
+}
+
+class _PlaceMapViewState extends State<PlaceMapView> {
+  final MapProvider provider = resolveMapProvider();
+
+  @override
+  Widget build(BuildContext context) =>
+      provider.build(places: widget.places, onOpen: widget.onOpen);
+}
+
+class GoogleMapView extends StatefulWidget {
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const GoogleMapView({super.key, required this.places, required this.onOpen});
+
+  @override
+  State<GoogleMapView> createState() => _GoogleMapViewState();
+}
+
+class _GoogleMapViewState extends State<GoogleMapView> {
+  gmaps.GoogleMapController? _controller;
+
+  gmaps.LatLng get _center => googleMapCenter;
+
+  Future<void> _recenter() async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.animateCamera(
+      gmaps.CameraUpdate.newLatLngZoom(_center, 15),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(22),
+    child: SizedBox(
+      height: 230,
+      child: Stack(
+        children: [
+          gmaps.GoogleMap(
+            initialCameraPosition: gmaps.CameraPosition(
+              target: _center,
+              zoom: 15,
+            ),
+            markers: widget.places
+                .map(
+                  (place) => gmaps.Marker(
+                    markerId: gmaps.MarkerId(place.name),
+                    position: gmaps.LatLng(place.lat, place.lng),
+                    onTap: () => widget.onOpen(place),
+                    infoWindow: gmaps.InfoWindow(
+                      title: place.name,
+                      snippet: '${place.category} · ${place.distance}',
+                    ),
+                  ),
+                )
+                .toSet(),
+            onMapCreated: (controller) => _controller = controller,
+            myLocationButtonEnabled: false,
+            mapToolbarEnabled: false,
+            zoomControlsEnabled: true,
+            compassEnabled: true,
+            mapType: gmaps.MapType.normal,
+          ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: IconButton(
+                tooltip: 'Pusatkan peta',
+                onPressed: _recenter,
+                icon: const Icon(
+                  Icons.my_location,
+                  color: AppColors.ink,
+                  size: 19,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class IllustratedMapPreview extends StatelessWidget {
+  final List<Workshop> places;
+  final ValueChanged<Workshop> onOpen;
+  const IllustratedMapPreview({
+    super.key,
+    this.places = const [],
+    required this.onOpen,
+  });
+
+  /// Places sample pins by their relative coordinates, framed around BINUS.
+  ({List<(Workshop, double, double)> places, double campX, double campY})
+  _layout() {
+    final lats = [defaultMapLat, ...places.map((p) => p.lat)];
+    final lngs = [defaultMapLng, ...places.map((p) => p.lng)];
+    final minLat = lats.reduce(math.min), maxLat = lats.reduce(math.max);
+    final minLng = lngs.reduce(math.min), maxLng = lngs.reduce(math.max);
+    final spanLat = maxLat - minLat;
+    final spanLng = maxLng - minLng;
+    double fx(double lng) => spanLng == 0 ? .5 : (lng - minLng) / spanLng;
+    double fy(double lat) => spanLat == 0 ? .5 : (maxLat - lat) / spanLat;
+    return (
+      places: places
+          .map((p) => (p, .12 + fx(p.lng) * .64, .26 + fy(p.lat) * .42))
+          .toList(),
+      campX: .12 + fx(defaultMapLng) * .64,
+      campY: .26 + fy(defaultMapLat) * .42,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 230,
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: const Color(0xFFE7EEE4),
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: AppColors.border),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x10151C27),
+          blurRadius: 12,
+          offset: Offset(0, 4),
         ),
       ],
     ),
+    child: Builder(
+      builder: (context) {
+        final layout = _layout();
+        return Stack(
+          children: [
+            const Positioned.fill(
+              child: CustomPaint(painter: IllustratedRoadPainter()),
+            ),
+            Align(
+              alignment: Alignment(layout.campX * 2 - 1, layout.campY * 2 - 1),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: AppColors.ink,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.school,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .9),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'BINUS',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (final (place, x, y) in layout.places)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: Align(
+                  alignment: Alignment(x * 2 - 1, y * 2 - 1),
+                  child: GestureDetector(
+                    onTap: () => onOpen(place),
+                    child: Icon(
+                      Icons.location_on,
+                      color: place.partner ? AppColors.red : AppColors.ink,
+                      size: place.partner ? 32 : 27,
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              right: 12,
+              bottom: 38,
+              child: Material(
+                color: Colors.white,
+                elevation: 2,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: 'Pusatkan peta',
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Lokasi saat ini belum tersedia.'),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.my_location,
+                    color: AppColors.ink,
+                    size: 19,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .94),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Peta area sekitar',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ),
   );
+}
+
+class IllustratedRoadPainter extends CustomPainter {
+  const IllustratedRoadPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final road = Paint()
+      ..color = const Color(0xFFF8F5E9)
+      ..strokeWidth = 14
+      ..strokeCap = StrokeCap.round;
+    final thinRoad = Paint()
+      ..color = const Color(0xFFD5DCCB)
+      ..strokeWidth = 3;
+    canvas.drawLine(
+      Offset(-12, size.height * .72),
+      Offset(size.width * .95, size.height * .18),
+      road,
+    );
+    canvas.drawLine(
+      Offset(size.width * .25, -12),
+      Offset(size.width * .52, size.height + 12),
+      road,
+    );
+    canvas.drawLine(
+      Offset(size.width * .78, -12),
+      Offset(size.width * .68, size.height + 12),
+      thinRoad,
+    );
+    canvas.drawLine(
+      Offset(-12, size.height * .3),
+      Offset(size.width + 12, size.height * .83),
+      thinRoad,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant IllustratedRoadPainter oldDelegate) => false;
 }
 
 class WorkshopCard extends StatelessWidget {
@@ -3229,17 +6411,20 @@ class WorkshopCard extends StatelessWidget {
             children: [
               Text(w.name, style: const TextStyle(fontWeight: FontWeight.w800)),
               Text(
-                '★ ${w.rating}  ·  ${w.distance}',
+                '${w.category} · ${w.distance}',
                 style: const TextStyle(
-                  color: AppColors.amber,
-                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
               ),
               const SizedBox(height: 5),
-              const Text(
-                'Bengkel demo • belum diverifikasi',
-                style: TextStyle(color: AppColors.muted, fontSize: 12),
+              Text(
+                w.partner ? 'Partner OtoKu' : 'Bengkel umum',
+                style: TextStyle(
+                  color: w.partner ? AppColors.green : AppColors.muted,
+                  fontSize: 12,
+                ),
               ),
               Text(
                 w.services,
@@ -3249,6 +6434,49 @@ class WorkshopCard extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+class _PlaceAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _PlaceAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(color: Color(0x10151C27), blurRadius: 5),
+                ],
+              ),
+              child: Icon(icon, color: AppColors.red, size: 20),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -3263,64 +6491,232 @@ class WorkshopDetailScreen extends StatelessWidget {
   });
   @override
   Widget build(BuildContext c) => Page(
-    title: 'Detail Bengkel',
-    bottomBar: SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: FilledButton(
-          onPressed: () =>
-              push(c, BookingScreen(state: state, workshop: workshop)),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          child: const Text('Booking demo'),
-        ),
-      ),
-    ),
+    title: 'Detail Tempat',
+    bottomBar: workshop.bookingEnabled
+        ? SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton(
+                onPressed: () =>
+                    push(c, BookingScreen(state: state, workshop: workshop)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                child: const Text('Booking partner'),
+              ),
+            ),
+          )
+        : null,
     child: ScrollPage(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CardBox(
-            color: AppColors.ink,
-            child: SizedBox(
-              height: 150,
-              child: Center(
-                child: Icon(
-                  Icons.storefront_outlined,
-                  color: AppColors.red,
-                  size: 72,
-                ),
+          Container(
+            height: 230,
+            width: double.infinity,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.navy, Color(0xFF394558)],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            workshop.name,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-          ),
-          Text(
-            '★ ${workshop.rating} · ${workshop.distance}',
-            style: const TextStyle(
-              color: AppColors.amber,
-              fontWeight: FontWeight.w700,
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -35,
+                  top: -55,
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .08),
+                        width: 24,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 35,
+                  bottom: -90,
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .06),
+                        width: 18,
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Icon(
+                    workshop.category == 'Bengkel'
+                        ? Icons.storefront_outlined
+                        : workshop.category == 'SPBU'
+                        ? Icons.local_gas_station
+                        : Icons.storefront,
+                    color: Colors.white.withValues(alpha: .9),
+                    size: 86,
+                  ),
+                ),
+                Positioned(
+                  left: 14,
+                  top: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      workshop.partner ? 'MITRA OtoKu' : 'TEMPAT',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: .4,
+                      ),
+                    ),
+                  ),
+                ),
+                const Positioned(
+                  left: 12,
+                  bottom: 10,
+                  child: Text(
+                    '',
+                    style: TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            'Bengkel demo • jam operasional belum diverifikasi',
-            style: TextStyle(color: AppColors.muted),
+          const SizedBox(height: 18),
+          Text(
+            workshop.name,
+            style: const TextStyle(
+              fontSize: 23,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -.5,
+            ),
           ),
-          const SizedBox(height: 12),
-          const Row(
+          const SizedBox(height: 5),
+          Row(
             children: [
-              OutlinedButton(onPressed: null, child: Text('Rute')),
-              OutlinedButton(onPressed: null, child: Text('Hubungi')),
-              OutlinedButton(onPressed: null, child: Text('Simpan')),
+              Text(
+                '${workshop.category} · ${workshop.distance}',
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+              const Spacer(),
+              StatusChip(
+                workshop.partner ? 'Partner' : 'Non-partner',
+                workshop.partner ? AppColors.green : AppColors.muted,
+              ),
             ],
           ),
-          const SectionTitle('Layanan populer'),
-          ServiceRow('Ganti Oli Mesin', 'Rp 50.000', '30 menit'),
-          ServiceRow('Servis CVT', 'Rp 80.000', '45 menit'),
+          const SizedBox(height: 10),
+          Text(
+            workshop.partner ? 'Mitra resmi OtoKu.' : 'Bengkel non-partner.',
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_outlined,
+                size: 16,
+                color: AppColors.red,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  workshop.address,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLow,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                _PlaceAction(
+                  icon: Icons.directions_outlined,
+                  label: 'Rute',
+                  onTap: () =>
+                      showPrototypeNotice(c, 'Rute', 'Rute belum tersedia.'),
+                ),
+                _PlaceAction(
+                  icon: Icons.call_outlined,
+                  label: 'Hubungi',
+                  onTap: () => showPrototypeNotice(
+                    c,
+                    'Hubungi',
+                    'Kontak belum tersedia.',
+                  ),
+                ),
+                _PlaceAction(
+                  icon: Icons.bookmark_border,
+                  label: 'Simpan',
+                  onTap: () => ScaffoldMessenger.of(c).showSnackBar(
+                    const SnackBar(content: Text('Tempat disimpan')),
+                  ),
+                ),
+                _PlaceAction(
+                  icon: Icons.share_outlined,
+                  label: 'Bagikan',
+                  onTap: () => showPrototypeNotice(
+                    c,
+                    'Bagikan',
+                    'Bagikan belum tersedia.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (workshop.category == 'Bengkel') ...[
+            const SectionTitle('Layanan populer'),
+            CardBox(
+              color: AppColors.surfaceLow,
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppColors.muted),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      workshop.partner
+                          ? 'Layanan dan tarif mengikuti kebijakan bengkel.'
+                          : 'Booking tersedia untuk bengkel partner.',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     ),
@@ -3340,29 +6736,54 @@ class BookingServiceTile extends StatelessWidget {
     required this.onTap,
   });
   @override
-  Widget build(BuildContext context) => CardBox(
-    onTap: onTap,
-    child: Row(
-      children: [
-        const ProductArt(icon: 'oil'),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: selected ? AppColors.redTint.withValues(alpha: .45) : Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(
+        color: selected ? AppColors.red : AppColors.border,
+        width: selected ? 1.5 : 1,
+      ),
+      boxShadow: _cardShadow,
+    ),
+    child: Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text(
-                '$price · $duration',
-                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ProductArt(icon: 'oil', size: 52),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      '$price · $duration',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: selected ? AppColors.red : AppColors.muted,
               ),
             ],
           ),
         ),
-        Icon(
-          selected ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: selected ? AppColors.red : AppColors.muted,
-        ),
-      ],
+      ),
     ),
   );
 }
@@ -3406,8 +6827,77 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingState extends State<BookingScreen> {
-  int day = 1, time = 2;
-  bool oilSelected = true, cvtSelected = false;
+  static const times = [
+    '08:00',
+    '09:00',
+    '10:00',
+    '11:00',
+    '13:00',
+    '14:00',
+    '15:00',
+    '16:00',
+  ];
+  static const weekdays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+  static const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mei',
+    'Jun',
+    'Jul',
+    'Agu',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Des',
+  ];
+  final _notes = TextEditingController();
+  int day = 0, time = 2;
+  bool oilSelected = true, cvtSelected = false, submitting = false;
+
+  DateTime get selectedDate => DateTime.now().add(Duration(days: day + 1));
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (submitting) return;
+    final services = <String>[
+      if (oilSelected) 'Ganti Oli Mesin',
+      if (cvtSelected) 'Servis CVT',
+    ];
+    if (services.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pilih minimal satu layanan.')),
+      );
+      return;
+    }
+    setState(() => submitting = true);
+    try {
+      final booking = await widget.state.addBooking(
+        widget.workshop.name,
+        services: services,
+        date: selectedDate,
+        time: times[time],
+        notes: _notes.text,
+      );
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              BookingConfirmationScreen(state: widget.state, booking: booking),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext c) => Page(
     title: 'Booking Layanan',
@@ -3416,12 +6906,9 @@ class _BookingState extends State<BookingScreen> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: FilledButton(
-          onPressed: () {
-            widget.state.addBooking(widget.workshop.name);
-            Navigator.popUntil(c, (r) => r.isFirst);
-          },
+          onPressed: submitting ? null : _submit,
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          child: const Text('Lanjutkan'),
+          child: Text(submitting ? 'Menyimpan...' : 'Lanjutkan'),
         ),
       ),
     ),
@@ -3430,28 +6917,28 @@ class _BookingState extends State<BookingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CardBox(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.storefront_outlined, size: 40),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.workshop.name,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const Text(
-                      'Bekasi Utara',
-                      style: TextStyle(color: AppColors.muted),
-                    ),
-                  ],
+                Text(
+                  widget.workshop.name,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  widget.workshop.address,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Kendaraan: ${widget.state.vehicle.name} · ${widget.state.vehicle.plate}',
+                  style: const TextStyle(fontSize: 12),
                 ),
               ],
             ),
           ),
           const SectionTitle('Pilih Layanan'),
           BookingServiceTile(
+            key: const ValueKey('booking-oil'),
             title: 'Ganti Oli Mesin',
             price: 'Rp 50.000',
             duration: '30 menit',
@@ -3468,59 +6955,85 @@ class _BookingState extends State<BookingScreen> {
           const SectionTitle('Pilih Tanggal'),
           Wrap(
             spacing: 8,
-            children: List.generate(
-              5,
-              (i) => GestureDetector(
+            runSpacing: 8,
+            children: List.generate(5, (i) {
+              final date = DateTime.now().add(Duration(days: i + 1));
+              final selected = day == i;
+              return GestureDetector(
                 onTap: () => setState(() => day = i),
-                child: Pill(
-                  [
-                    'Sen 22 Sep',
-                    'Sel 23 Sep',
-                    'Rab 24 Sep',
-                    'Kam 25 Sep',
-                    'Jum 26 Sep',
-                  ][i],
-                  active: day == i,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 66,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: selected ? AppColors.red : Colors.white,
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(
+                      color: selected ? AppColors.red : AppColors.border,
+                    ),
+                    boxShadow: selected
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x1FE21B23),
+                              blurRadius: 9,
+                              offset: Offset(0, 3),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        weekdays[date.weekday - 1],
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: selected ? Colors.white70 : AppColors.muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${date.day}',
+                        style: TextStyle(
+                          fontSize: 17,
+                          color: selected ? Colors.white : AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        months[date.month - 1],
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: selected ? Colors.white70 : AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            }),
           ),
           const SectionTitle('Pilih Waktu'),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children:
-                [
-                  '08:00',
-                  '09:00',
-                  '10:00',
-                  '11:00',
-                  '13:00',
-                  '14:00',
-                  '15:00',
-                  '16:00',
-                ].map((x) {
-                  final i = [
-                    '08:00',
-                    '09:00',
-                    '10:00',
-                    '11:00',
-                    '13:00',
-                    '14:00',
-                    '15:00',
-                    '16:00',
-                  ].indexOf(x);
-                  return GestureDetector(
-                    onTap: () => setState(() => time = i),
-                    child: Pill(x, active: time == i),
-                  );
-                }).toList(),
+            children: times
+                .asMap()
+                .entries
+                .map(
+                  (entry) => GestureDetector(
+                    onTap: () => setState(() => time = entry.key),
+                    child: Pill(entry.value, active: time == entry.key),
+                  ),
+                )
+                .toList(),
           ),
           const SectionTitle('Catatan (opsional)'),
-          const TextField(
+          TextField(
+            controller: _notes,
             maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Contoh: minta dicek bagian lain juga',
+            decoration: const InputDecoration(
+              hintText: 'Minta dicek bagian lain juga',
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(borderSide: BorderSide.none),
@@ -3532,40 +7045,183 @@ class _BookingState extends State<BookingScreen> {
   );
 }
 
-class OrdersScreen extends StatelessWidget {
+class BookingConfirmationScreen extends StatelessWidget {
+  final OtoKuState state;
+  final String booking;
+  const BookingConfirmationScreen({
+    super.key,
+    required this.state,
+    required this.booking,
+  });
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Permintaan Booking',
+    child: ScrollPage(
+      child: Column(
+        children: [
+          CardBox(
+            color: AppColors.amberTint,
+            child: const Column(
+              children: [
+                Icon(Icons.schedule, color: AppColors.amber, size: 44),
+                SizedBox(height: 10),
+                Text(
+                  'Menunggu konfirmasi bengkel',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Permintaanmu menunggu konfirmasi bengkel.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          CardBox(child: Text(booking)),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: () => push(context, OrdersScreen(state: state)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
+            child: const Text('Lihat Pesanan'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () =>
+                Navigator.popUntil(context, (route) => route.isFirst),
+            child: const Text('Kembali ke Home'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class OrdersScreen extends StatefulWidget {
   final OtoKuState state;
   const OrdersScreen({super.key, required this.state});
   @override
-  Widget build(BuildContext c) => SafeArea(
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'Pesanan Saya',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 18),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+  State<OrdersScreen> createState() => _OrdersScreenState();
+}
+
+class _OrdersScreenState extends State<OrdersScreen> {
+  String filter = 'Semua';
+
+  @override
+  Widget build(BuildContext context) {
+    final orders = widget.state.orders.where((order) {
+      if (filter == 'Sparepart') return order.startsWith('#SP');
+      if (filter == 'Layanan') return order.startsWith('#SV');
+      return true;
+    }).toList();
+    return ColoredBox(
+      color: AppColors.bg,
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
           children: [
-            Pill('Sparepart', selectedTint: true),
-            Pill('Layanan'),
-            Pill('Semua'),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Pesanan',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -.4,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Bantuan pesanan',
+                  onPressed: () => showPrototypeNotice(
+                    context,
+                    'Bantuan',
+                    'Pantau status pesanan di halaman ini.',
+                  ),
+                  icon: const Icon(Icons.help_outline, color: AppColors.muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Text(
+                  '${orders.length} aktivitas',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+                const Spacer(),
+                if (orders.isNotEmpty)
+                  const Icon(Icons.circle, color: AppColors.red, size: 7),
+              ],
+            ),
+            const SizedBox(height: 14),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'Semua', label: Text('Semua')),
+                ButtonSegment(value: 'Sparepart', label: Text('Sparepart')),
+                ButtonSegment(value: 'Layanan', label: Text('Layanan')),
+              ],
+              selected: {filter},
+              onSelectionChanged: (selection) =>
+                  setState(() => filter = selection.first),
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                backgroundColor: AppColors.surfaceLow,
+                foregroundColor: AppColors.muted,
+                selectedBackgroundColor: AppColors.red,
+                selectedForegroundColor: Colors.white,
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (orders.isEmpty)
+              CardBox(
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.receipt_long_outlined,
+                      size: 36,
+                      color: AppColors.muted,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      filter == 'Semua'
+                          ? 'Belum ada pesanan'
+                          : 'Belum ada pesanan $filter',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Pesanan dan booking kamu akan muncul di sini.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...orders.map(
+                (order) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: OrderCard(
+                    order: order,
+                    onTap: () => push(context, OrderDetailScreen(order: order)),
+                  ),
+                ),
+              ),
           ],
         ),
-        const SizedBox(height: 16),
-        ...state.orders.map(
-          (x) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: OrderCard(
-              order: x,
-              onTap: () => push(c, OrderDetailScreen(order: x)),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class OrderCard extends StatelessWidget {
@@ -3582,63 +7238,141 @@ class OrderCard extends StatelessWidget {
         'Selesai',
         'Pesanan Selesai',
         'Dibatalkan',
+        'Menunggu pembayaran',
+        'Menunggu konfirmasi',
       ].contains(x),
-      orElse: () => 'Diproses',
+      orElse: () => 'Status tidak diketahui',
     );
+    final normalizedStatus = status == 'Pesanan Selesai' ? 'Selesai' : status;
+    final details = fields.length > 2
+        ? fields
+              .sublist(2, fields.length - 1)
+              .where((field) => field != status)
+              .join(' · ')
+        : '';
     final date = fields.length > 1 ? fields.last : '';
     return CardBox(
+      padding: const EdgeInsets.all(14),
       onTap: onTap,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
         children: [
-          ProductArt(icon: order.contains('Oli') ? 'oil' : 'brake'),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            children: [
+              Icon(
+                order.startsWith('#SV')
+                    ? Icons.build_circle_outlined
+                    : Icons.inventory_2_outlined,
+                size: 17,
+                color: AppColors.muted,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  fields.first,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .1,
+                  ),
+                ),
+              ),
+              StatusChip(
+                normalizedStatus,
+                normalizedStatus == 'Diproses' ||
+                        normalizedStatus == 'Dikirim' ||
+                        normalizedStatus.startsWith('Menunggu')
+                    ? AppColors.amber
+                    : normalizedStatus == 'Dibatalkan'
+                    ? AppColors.muted
+                    : AppColors.green,
+              ),
+              const SizedBox(width: 2),
+              const Icon(Icons.chevron_right, size: 18, color: AppColors.muted),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ProductArt(
+                icon: order.contains('Oli') ? 'oil' : 'brake',
+                size: 58,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        fields.first,
+                    Text(
+                      fields.length > 1 ? fields[1] : order,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (details.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        details,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppColors.muted,
-                          fontSize: 10,
+                          fontSize: 11,
                         ),
                       ),
-                    ),
-                    StatusChip(
-                      status,
-                      status == 'Diproses' || status == 'Dikirim'
-                          ? AppColors.amber
-                          : AppColors.green,
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      date,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  fields.length > 1 ? fields[1] : order,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                  ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLow,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 15,
+                  color: AppColors.muted,
                 ),
-                if (fields.length > 2)
-                  Text(
-                    fields.sublist(2, fields.length - 1).join(' · '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    order.startsWith('#SV')
+                        ? 'Permintaan · menunggu respons bengkel'
+                        : 'Pembayaran menunggu konfirmasi',
                     style: const TextStyle(
                       color: AppColors.muted,
                       fontSize: 10,
                     ),
                   ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    date,
-                    style: const TextStyle(color: AppColors.muted, fontSize: 9),
+                ),
+                const Text(
+                  'Detail',
+                  style: TextStyle(
+                    color: AppColors.red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -3665,30 +7399,10 @@ class OrderDetailScreen extends StatelessWidget {
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 16),
-          const CardBox(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.check_circle, color: AppColors.green),
-                  title: Text('Pesanan dibuat'),
-                  subtitle: Text('Berhasil dibuat'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.inventory_2_outlined),
-                  title: Text('Sedang dikemas'),
-                  subtitle: Text('Pesanan sedang diproses'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.local_shipping_outlined),
-                  title: Text('Dikirim'),
-                  subtitle: Text('Menunggu proses pengiriman'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.home_outlined),
-                  title: Text('Selesai'),
-                  subtitle: Text('Belum selesai'),
-                ),
-              ],
+          CardBox(
+            child: Text(
+              'Status: ${order.split(' • ').firstWhere((field) => ['Menunggu pembayaran', 'Menunggu konfirmasi', 'Diproses', 'Dikirim', 'Selesai', 'Dibatalkan'].contains(field), orElse: () => 'Belum diketahui')}',
+              style: const TextStyle(height: 1.5),
             ),
           ),
           const SectionTitle('Ringkasan'),
@@ -3701,7 +7415,7 @@ class OrderDetailScreen extends StatelessWidget {
           const SectionTitle('Pembayaran'),
           const CardBox(
             child: Text(
-              'Pembayaran mock\nTotal mengikuti ringkasan pesanan',
+              'Status pembayaran diperbarui setelah pesanan diproses.',
               style: TextStyle(height: 1.6),
             ),
           ),
@@ -3711,168 +7425,625 @@ class OrderDetailScreen extends StatelessWidget {
   );
 }
 
-class AccountScreen extends StatelessWidget {
-  final OtoKuState state;
-  const AccountScreen({super.key, required this.state});
-  @override
-  Widget build(BuildContext c) => SafeArea(
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            const Text(
-              'Akun Saya',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-            ),
-            const Spacer(),
-            IconButton(
-              onPressed: () {},
-              tooltip: 'Pengaturan akun',
-              icon: const Icon(Icons.settings_outlined),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        const CardBox(
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: Color(0xFFE8E8E8),
-                child: Text(
-                  'AB',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Agus Budiyanto',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    'agus.budiyanto@email.com',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                  Text(
-                    'Lihat Profil ›',
-                    style: TextStyle(color: AppColors.red, fontSize: 12),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        ...[
-          'Kendaraan Saya',
-          'Pesanan Saya',
-          'Booking Layanan',
-          'Alamat Saya',
-          'Metode Pembayaran',
-          'Voucher & Promo',
-          'Pusat Bantuan',
-          'Tentang OtoKu',
-        ].map(
-          (x) => CardBox(
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(x),
-              trailing: const Icon(Icons.chevron_right),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        const CardBox(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.logout, color: AppColors.red),
-            title: Text(
-              'Logout',
-              style: TextStyle(
-                color: AppColors.red,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
+void showPrototypeNotice(BuildContext context, String title, String message) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
         ),
       ],
     ),
   );
 }
 
-class CheckoutScreen extends StatelessWidget {
+class AccountScreen extends StatelessWidget {
   final OtoKuState state;
-  const CheckoutScreen({super.key, required this.state});
+  const AccountScreen({super.key, required this.state});
+
   @override
-  Widget build(BuildContext c) => Page(
-    title: 'Checkout',
-    child: ScrollPage(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Ringkasan pesanan',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 14),
-          ...state.cart.map(
-            (p) => CardBox(
-              child: Row(
-                children: [
-                  ProductArt(icon: p.icon),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      p.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
+  Widget build(BuildContext c) {
+    final actions = <({String title, IconData icon, VoidCallback onTap})>[
+      (
+        title: 'Kendaraan Saya',
+        icon: Icons.two_wheeler,
+        onTap: () => push(c, VehicleListScreen(state: state)),
+      ),
+      (
+        title: 'Pesanan Saya',
+        icon: Icons.receipt_long_outlined,
+        onTap: () => push(c, OrdersScreen(state: state)),
+      ),
+      (
+        title: 'Booking Layanan',
+        icon: Icons.event_note,
+        onTap: () => push(c, OrdersScreen(state: state)),
+      ),
+      (
+        title: 'Alamat Saya',
+        icon: Icons.location_on_outlined,
+        onTap: () => showPrototypeNotice(
+          c,
+          'Alamat Saya',
+          'Alamat belum disimpan. Checkout ini tidak melakukan pengiriman.',
+        ),
+      ),
+      (
+        title: 'Metode Pembayaran',
+        icon: Icons.account_balance_wallet_outlined,
+        onTap: () => showPrototypeNotice(
+          c,
+          'Metode Pembayaran',
+          'Metode pembayaran dipilih saat checkout.',
+        ),
+      ),
+      (
+        title: 'Pusat Bantuan',
+        icon: Icons.help_outline,
+        onTap: () => showPrototypeNotice(
+          c,
+          'Pusat Bantuan',
+          'Dukungan akun akan tersedia setelah layanan backend dikonfigurasi.',
+        ),
+      ),
+      (
+        title: 'Tentang OtoKu',
+        icon: Icons.info_outline,
+        onTap: () =>
+            showPrototypeNotice(c, 'Tentang OtoKu', 'OtoKu versi 1.0.0.'),
+      ),
+    ];
+    Widget menuGroup(
+      List<({String title, IconData icon, VoidCallback onTap})> items,
+    ) => DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+        boxShadow: _cardShadow,
+      ),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              ListTile(
+                minLeadingWidth: 24,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: Icon(items[i].icon, color: AppColors.muted, size: 22),
+                title: Text(
+                  items[i].title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
-                  Text(
-                    p.price,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ],
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.muted,
+                  size: 20,
+                ),
+                onTap: items[i].onTap,
               ),
-            ),
+              if (i < items.length - 1)
+                const Divider(height: 1, indent: 52, endIndent: 16),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.surfaceHigh,
+                child: Text(
+                  'OK',
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Akun Saya',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.4,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Kendaraan, pesanan & akun',
+                      style: TextStyle(color: AppColors.muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Pengaturan akun',
+                onPressed: () => showPrototypeNotice(
+                  c,
+                  'Pengaturan Akun',
+                  'Pengaturan profil segera hadir.',
+                ),
+                icon: const Icon(
+                  Icons.settings_outlined,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
           ),
-          const SectionTitle('Alamat pengiriman'),
-          const CardBox(
-            child: Text(
-              'Agus Budiyanto\nBekasi Utara\nAlamat mock untuk prototype',
-              style: TextStyle(height: 1.5),
-            ),
-          ),
-          const SectionTitle('Metode pembayaran'),
-          const CardBox(
+          const SizedBox(height: 18),
+          CardBox(
+            color: AppColors.surfaceLow,
+            padding: const EdgeInsets.all(14),
+            onTap: () => push(c, VehicleDetailScreen(state: state)),
             child: Row(
               children: [
-                Icon(Icons.account_balance_wallet_outlined),
-                SizedBox(width: 10),
-                Text('Pembayaran mock'),
-                Spacer(),
-                Icon(Icons.check_circle, color: AppColors.green),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.two_wheeler, color: AppColors.red),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              state.vehicle.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.greenTint,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Aktif',
+                              style: TextStyle(
+                                color: AppColors.green,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${state.vehicle.plate} · ${formatKilometers(state.vehicle.mileage)} km',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => push(c, VehicleDetailScreen(state: state)),
+                  child: const Text('Ubah'),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 22),
-          FilledButton(
-            onPressed: () {
-              state.checkout(
-                state.cart.isNotEmpty ? state.cart.first.name : 'Sparepart',
-              );
-              Navigator.popUntil(c, (r) => r.isFirst);
-            },
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
+          const SizedBox(height: 14),
+          menuGroup(actions.take(5).toList()),
+          const SizedBox(height: 14),
+          menuGroup(actions.skip(5).toList()),
+        ],
+      ),
+    );
+  }
+}
+
+class CheckoutScreen extends StatelessWidget {
+  final OtoKuState state;
+  const CheckoutScreen({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: state,
+    builder: (context, _) {
+      final items = state.products
+          .where((product) => state.quantityOf(product) > 0)
+          .toList();
+      return Page(
+        title: 'Keranjang & Checkout',
+        bottomBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: AppColors.border)),
             ),
-            child: const Text('Buat Pesanan'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Subtotal',
+                        style: TextStyle(color: AppColors.muted, fontSize: 11),
+                      ),
+                      Text(
+                        'Rp ${formatKilometers(state.cartSubtotal)}',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton(
+                  onPressed: items.isEmpty
+                      ? null
+                      : () async {
+                          final order = await state.checkout();
+                          if (!context.mounted) return;
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderConfirmationScreen(
+                                state: state,
+                                order: order,
+                              ),
+                            ),
+                          );
+                        },
+                  child: const Text('Buat Pesanan'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        child: ScrollPage(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.redTint,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.red.withValues(alpha: .12),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.shield_outlined, color: AppColors.red, size: 17),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Pembayaran aman & terverifikasi',
+                        style: TextStyle(
+                          color: AppColors.redDark,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Ringkasan pesanan',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${items.length} item',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (items.isEmpty)
+                const CardBox(
+                  child: Text('Keranjang kosong. Tambahkan produk dari Shop.'),
+                ),
+              ...items.map(
+                (product) => CardBox(
+                  child: Row(
+                    children: [
+                      ProductArt(icon: product.icon, image: product.imageAsset),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              product.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              product.price,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                IconButton(
+                                  tooltip: 'Kurangi jumlah',
+                                  onPressed: () => state.removeOne(product),
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                ),
+                                Text(
+                                  '${state.quantityOf(product)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Tambah jumlah',
+                                  onPressed: () => state.add(product),
+                                  icon: const Icon(Icons.add_circle_outline),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        'Rp ${formatKilometers(int.parse(product.price.replaceAll(RegExp(r'[^0-9]'), '')) * state.quantityOf(product))}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SectionTitle('Alamat pengiriman'),
+              CardBox(
+                onTap: () => showPrototypeNotice(
+                  context,
+                  'Alamat Pengiriman',
+                  'Penyimpanan alamat segera hadir.',
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors.redTint,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.location_on_outlined,
+                        color: AppColors.red,
+                        size: 19,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Alamat belum diatur',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Checkout ini tidak melakukan pengiriman.',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: AppColors.muted),
+                  ],
+                ),
+              ),
+              const SectionTitle('Pembayaran'),
+              const CardBox(
+                color: AppColors.surfaceLow,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.do_not_disturb_on_outlined,
+                      color: AppColors.muted,
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tidak ada pembayaran',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'QRIS, VA, atau bayar di bengkel',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: AppColors.muted),
+                  ],
+                ),
+              ),
+              const SectionTitle('Rincian pembayaran'),
+              CardBox(
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Subtotal produk',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          'Rp ${formatKilometers(state.cartSubtotal)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Divider(height: 1),
+                    ),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Total',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          'Rp ${formatKilometers(state.cartSubtotal)}',
+                          style: const TextStyle(
+                            color: AppColors.red,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class OrderConfirmationScreen extends StatelessWidget {
+  final OtoKuState state;
+  final String order;
+  const OrderConfirmationScreen({
+    super.key,
+    required this.state,
+    required this.order,
+  });
+
+  @override
+  Widget build(BuildContext context) => Page(
+    title: 'Pesanan Dibuat',
+    child: ScrollPage(
+      child: Column(
+        children: [
+          const CardBox(
+            color: AppColors.amberTint,
+            child: Column(
+              children: [
+                Icon(
+                  Icons.receipt_long_outlined,
+                  color: AppColors.amber,
+                  size: 44,
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Menunggu pembayaran',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Pesananmu sudah dibuat. Selesaikan pembayaran untuk diproses.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          CardBox(child: Text(order)),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: () => push(context, OrdersScreen(state: state)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
+            child: const Text('Lihat Pesanan'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () =>
+                Navigator.popUntil(context, (route) => route.isFirst),
+            child: const Text('Kembali ke Home'),
           ),
         ],
       ),
