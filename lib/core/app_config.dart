@@ -46,6 +46,7 @@ class AppConfig {
       requestedProvider == MapProvider.google && !hasGoogleKey;
 
   static const osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const osmCopyrightUrl = 'https://www.openstreetmap.org/copyright';
   static const osmAttribution = '© OpenStreetMap contributors';
   static const userAgentPackage = 'id.otoku.app';
 }

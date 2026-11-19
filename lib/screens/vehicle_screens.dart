@@ -296,33 +296,39 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
           ),
           const SizedBox(height: 12),
           TextField(
+            key: const ValueKey('vehicle-brand'),
             controller: _brand,
             decoration: const InputDecoration(labelText: 'Merek'),
           ),
           const SizedBox(height: 10),
           TextField(
+            key: const ValueKey('vehicle-model'),
             controller: _model,
             decoration: const InputDecoration(labelText: 'Model'),
           ),
           const SizedBox(height: 10),
           TextField(
+            key: const ValueKey('vehicle-plate'),
             controller: _plate,
             textCapitalization: TextCapitalization.characters,
             decoration: const InputDecoration(labelText: 'Nomor polisi'),
           ),
           const SizedBox(height: 10),
           TextField(
+            key: const ValueKey('vehicle-type'),
             controller: _type,
             decoration: const InputDecoration(labelText: 'Tipe / varian'),
           ),
           const SizedBox(height: 10),
           TextField(
+            key: const ValueKey('vehicle-year'),
             controller: _year,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(labelText: 'Tahun'),
           ),
           const SizedBox(height: 10),
           TextField(
+            key: const ValueKey('vehicle-mileage'),
             controller: _mileage,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(

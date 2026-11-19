@@ -1359,7 +1359,7 @@ class MaintenanceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Estimasi: ${dueText(next)}',
+                  dueText(next),
                   style: const TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 2),

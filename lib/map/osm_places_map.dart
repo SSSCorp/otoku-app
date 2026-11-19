@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_config.dart';
 import '../models/place.dart';
@@ -223,10 +224,26 @@ class _OsmPlacesMapState extends State<OsmPlacesMap> {
               ),
             ],
           ),
-        const SimpleAttributionWidget(
-          source: Text(AppConfig.osmAttribution),
-          backgroundColor: Color(0xCCFFFFFF),
+        Align(
           alignment: Alignment.bottomLeft,
+          child: GestureDetector(
+            onTap: () => launchUrl(
+              Uri.parse(AppConfig.osmCopyrightUrl),
+              mode: LaunchMode.externalApplication,
+            ),
+            child: Container(
+              margin: const EdgeInsets.all(4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xCCFFFFFF),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                AppConfig.osmAttribution,
+                style: TextStyle(fontSize: 11, color: Color(0xFF0078A8)),
+              ),
+            ),
+          ),
         ),
       ],
     );
