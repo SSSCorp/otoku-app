@@ -1,23 +1,24 @@
 import java.util.Properties
 
-// Reads a key from the project-root .env (gitignored) or the environment.
-fun envKey(name: String): String {
-    val envFile = rootProject.file("../.env")
-    if (envFile.exists()) {
-        envFile.readLines().forEach { line ->
-            val trimmed = line.trim()
-            if (trimmed.startsWith("$name=")) {
-                return trimmed.substringAfter('=').trim().removeSurrounding("\"")
-            }
-        }
-    }
-    return System.getenv(name) ?: ""
-}
-
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Optional Google Maps key. Looked up in the GOOGLE_MAPS_API_KEY environment
+// variable, then in a project-root `.env` file. Empty by default: the app then
+// uses OpenStreetMap and never needs a key.
+fun googleMapsApiKey(): String {
+    System.getenv("GOOGLE_MAPS_API_KEY")?.takeIf { it.isNotBlank() }?.let { return it.trim() }
+    val envFile = rootProject.file("../.env")
+    if (envFile.exists()) {
+        envFile.readLines().forEach { line ->
+            val match = Regex("^\\s*GOOGLE_MAPS_API_KEY\\s*=\\s*(.*?)\\s*$").find(line)
+            if (match != null) return match.groupValues[1].trim('"', '\'')
+        }
+    }
+    return ""
 }
 
 android {
@@ -42,7 +43,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders["MAPS_API_KEY"] = envKey("GOOGLE_MAPS_API_KEY")
+        manifestPlaceholders["googleMapsApiKey"] = googleMapsApiKey()
     }
 
     buildTypes {

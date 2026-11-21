@@ -20,11 +20,21 @@ This glossary defines the domain language for OtoKu, a vehicle companion that co
 
 **Sparepart**: A replacement vehicle component or consumable offered for purchase and checked against the active vehicle’s compatibility.
 
-**Bengkel**: A workshop that offers vehicle maintenance or repair services.
+**Bengkel**: A workshop that offers vehicle maintenance or repair services. Shown on the Peta map as a **Place** together with SPBU and minimarket.
+
+**Peta**: The map tab. It shows a real map, the user's live position and the distance to each Place; location is only used while the app is open.
+
+**Place**: A bengkel, SPBU or minimarket with coordinates, opening hours and services. Seed places use OpenStreetMap names and coordinates around BINUS Bekasi; their hours and services are unverified samples.
+
+**Trip**: A GPS-recorded drive (distance and duration) that can be added to the odometer; it is an estimate, not an odometer reading.
+
+**SPBU visit**: The user staying near an SPBU long enough that the app offers to log BBM.
+
+**Simulation**: Anything not backed by a real service: payment, order confirmation, delivery and all OBD data. It is always labelled.
 
 **Booking layanan**: A scheduled request for one or more services at a Bengkel.
 
-**Pesanan**: A recorded purchase of a Sparepart or a confirmed Booking layanan.
+**Pesanan**: A recorded purchase of a Sparepart or a Booking layanan request (its status is simulated locally).
 
 ## Relationships
 
@@ -33,6 +43,7 @@ This glossary defines the domain language for OtoKu, a vehicle companion that co
 - **OBD** may provide **Diagnostic trouble codes** for a **Vehicle**.
 - A **Sparepart** is either compatible or incompatible with the **active vehicle**.
 - A **Bengkel** offers services that can be combined into a **Booking layanan**.
+- Due **Maintenance** and **DTCs** suggest the nearest **Bengkel**; a **Trip** can raise the **Vehicle**'s odometer; an **SPBU visit** prompts a BBM log.
 - A **Pesanan** represents either a Sparepart purchase or a Booking layanan.
 
 ## Example dialogue
