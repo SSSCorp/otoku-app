@@ -434,7 +434,7 @@ class AboutScreen extends StatelessWidget {
           SectionTitle('Atribusi'),
           CardBox(
             child: Text(
-              'Peta © OpenStreetMap contributors (ODbL). Rute: OSRM (router.project-osrm.org). Foto produk adalah ilustrasi dari Wikimedia Commons; kredit ada di assets/product_images/ATTRIBUTION.md. Nama dan jam tempat pada peta adalah data demo.',
+              'Peta © OpenStreetMap contributors (ODbL). Rute: OSRM (router.project-osrm.org). Foto produk adalah ilustrasi dari Wikimedia Commons; kredit ada di assets/product_images/ATTRIBUTION.md. Lokasi tempat berasal dari OpenStreetMap; jam dan layanan adalah contoh yang belum diverifikasi.',
               style: TextStyle(height: 1.45),
             ),
           ),

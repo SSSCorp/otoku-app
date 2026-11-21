@@ -12,7 +12,7 @@ import 'support/fakes.dart';
 import 'support/harness.dart';
 
 final jaya = Place.demoPlaces.firstWhere((p) => p.id == 'bengkel-jaya-motor');
-final spbu = Place.demoPlaces.firstWhere((p) => p.id == 'spbu-pertamina-demo');
+final spbu = Place.demoPlaces.firstWhere((p) => p.id == 'spbu-34-17542');
 
 Future<void> openPeta(WidgetTester tester) => openTab(tester, 'Peta');
 
@@ -45,7 +45,7 @@ void main() {
     ) async {
       await launch(tester);
       await openPeta(tester);
-      expect(find.text('9 tempat'), findsOneWidget);
+      expect(find.text('14 tempat'), findsOneWidget);
       final tiles = find
           .byType(Text)
           .evaluate()
@@ -72,13 +72,13 @@ void main() {
       await openPeta(tester);
       await tapChip(tester, 'SPBU');
       await tester.pumpAndSettle();
-      expect(find.text('3 tempat'), findsOneWidget);
-      expect(find.text('SPBU Pertamina Demo'), findsOneWidget);
+      expect(find.text('5 tempat'), findsOneWidget);
+      expect(find.text('Pertamina 34-17542'), findsOneWidget);
       expect(find.text('Bengkel Jaya Motor'), findsNothing);
 
       await tapChip(tester, 'Semua');
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'jaya');
+      await tester.enterText(find.byType(TextField), 'bengkel jaya');
       await tester.pumpAndSettle();
       expect(find.text('1 tempat'), findsOneWidget);
       expect(find.text('Bengkel Jaya Motor'), findsOneWidget);
@@ -88,7 +88,7 @@ void main() {
       expect(find.text('Tempat tidak ditemukan'), findsOneWidget);
       await tester.tap(find.text('Reset pencarian'));
       await tester.pumpAndSettle();
-      expect(find.text('9 tempat'), findsOneWidget);
+      expect(find.text('14 tempat'), findsOneWidget);
     });
 
     testWidgets(
@@ -120,6 +120,11 @@ void main() {
         await openPeta(tester);
         await tapChip(tester, 'SPBU');
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('fit-places')));
+        await tester.pumpAndSettle();
+        // Move the marker away from the map buttons on the right edge.
+        await tester.drag(find.byType(FlutterMap), const Offset(-150, 0));
+        await tester.pumpAndSettle();
         await tester.tap(
           find.bySemanticsLabel('Penanda ${spbu.name}'),
           warnIfMissed: false,
@@ -127,7 +132,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('selected-place')), findsOneWidget);
         expect(
-          find.byKey(const ValueKey('selected-${'spbu-pertamina-demo'}')),
+          find.byKey(const ValueKey('selected-${'spbu-34-17542'}')),
           findsOneWidget,
         );
 
@@ -234,7 +239,7 @@ void main() {
         await launch(tester, services: testServices(network: network));
         await openPeta(tester);
         expect(find.byKey(const ValueKey('offline-notice')), findsOneWidget);
-        expect(find.text('9 tempat'), findsOneWidget);
+        expect(find.text('14 tempat'), findsOneWidget);
         network.online = true;
         await tester.tap(find.text('Coba lagi'));
         await tester.pumpAndSettle();
@@ -289,7 +294,7 @@ void main() {
       expect(distance, matches(RegExp(r'^Bengkel · \d+ m$')));
       expect(find.text('Jam operasional'), findsOneWidget);
       expect(find.textContaining('08:00–17:00'), findsOneWidget);
-      expect(find.text('Servis Rutin'), findsOneWidget);
+      expect(find.text('Servis rutin'), findsOneWidget);
       expect(find.text('Ganti Oli Mesin'), findsOneWidget);
     });
 
@@ -394,20 +399,23 @@ void main() {
     });
 
     testWidgets(
-      'non-partner bengkel can be booked too; SPBU and minimarket have no booking',
+      'only the partner bengkel is bookable; non-partner, SPBU and minimarket have no booking',
       (tester) async {
         await launch(tester);
         await openPeta(tester);
-        await tester.tap(find.text('AutoCare Plus'));
+        await tester.enterText(find.byType(TextField), 'honda service');
         await tester.pumpAndSettle();
-        expect(find.text('Booking Layanan'), findsOneWidget);
-        await back(tester);
-        await tapChip(tester, 'SPBU');
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('SPBU Pertamina Demo'));
+        await tester.tap(find.text('Honda Service'));
         await tester.pumpAndSettle();
         expect(find.text('Booking Layanan'), findsNothing);
-        expect(find.text('Pertamax Turbo'), findsOneWidget);
+        await back(tester);
+        await tester.enterText(find.byType(TextField), '');
+        await tapChip(tester, 'SPBU');
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Pertamina 34-17542'));
+        await tester.pumpAndSettle();
+        expect(find.text('Booking Layanan'), findsNothing);
+        expect(find.text('Solar'), findsOneWidget);
       },
     );
   });
@@ -554,13 +562,13 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pumpAndSettle();
         expect(find.text('Kamu di SPBU?'), findsOneWidget);
-        expect(find.textContaining('SPBU Pertamina Demo'), findsOneWidget);
+        expect(find.textContaining('Pertamina 34-17542'), findsOneWidget);
 
         await tester.tap(find.text('Catat BBM'));
         await tester.pumpAndSettle();
         expect(find.text('Catat Aktivitas'), findsOneWidget);
         expect(
-          find.widgetWithText(TextField, 'Isi BBM di SPBU Pertamina Demo'),
+          find.widgetWithText(TextField, 'Isi BBM di Pertamina 34-17542'),
           findsOneWidget,
         );
         await tester.enterText(
@@ -572,7 +580,7 @@ void main() {
         final saved = await repo.loadState();
         final log = (saved!['logs'] as List).single;
         expect(log['type'], 'bbm');
-        expect(log['title'], 'Isi BBM di SPBU Pertamina Demo');
+        expect(log['title'], 'Isi BBM di Pertamina 34-17542');
         await tester.pump(const Duration(milliseconds: 200));
         expect(
           find.text('Kamu di SPBU?'),

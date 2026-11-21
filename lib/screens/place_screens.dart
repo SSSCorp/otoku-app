@@ -114,8 +114,8 @@ class _PlaceDetailScreenState extends State<PlaceDetailScreen> {
                 const SizedBox(height: 10),
                 Text(
                   place.partner
-                      ? 'Partner OtoKu demo · lokasi dan layanan belum diverifikasi'
-                      : 'Lokasi demo · alamat dan jam operasional belum diverifikasi',
+                      ? 'Partner OtoKu · jam dan layanan belum diverifikasi'
+                      : 'Non-partner · jam operasional belum diverifikasi, booking tidak tersedia',
                   style: const TextStyle(color: AppColors.muted),
                 ),
                 const SectionTitle('Jam operasional'),

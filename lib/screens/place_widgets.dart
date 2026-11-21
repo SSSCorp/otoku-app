@@ -212,8 +212,8 @@ class PlaceTile extends StatelessWidget {
                 Text(
                   note ??
                       (place.partner
-                          ? 'Partner OtoKu · demo'
-                          : 'Lokasi demo · belum diverifikasi'),
+                          ? 'Partner OtoKu'
+                          : 'Non-partner · jam belum diverifikasi'),
                   style: TextStyle(
                     color: place.partner && note == null
                         ? AppColors.green

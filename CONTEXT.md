@@ -24,7 +24,7 @@ This glossary defines the domain language for OtoKu, a vehicle companion that co
 
 **Peta**: The map tab. It shows a real map, the user's live position and the distance to each Place; location is only used while the app is open.
 
-**Place**: A bengkel, SPBU or minimarket with coordinates, opening hours and services. Seed places are demo data.
+**Place**: A bengkel, SPBU or minimarket with coordinates, opening hours and services. Seed places use OpenStreetMap names and coordinates around BINUS Bekasi; their hours and services are unverified samples.
 
 **Trip**: A GPS-recorded drive (distance and duration) that can be added to the odometer; it is an estimate, not an odometer reading.
 

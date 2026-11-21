@@ -56,7 +56,7 @@ void main() {
       tester,
     ) async {
       await launch(tester);
-      for (final label in ['Shop', 'Peta', 'Pesanan', 'Akun', 'Home']) {
+      for (final label in ['Toko', 'Peta', 'Pesanan', 'Akun', 'Beranda']) {
         await openTab(tester, label);
       }
       await openTab(tester, 'Pesanan');
@@ -260,7 +260,7 @@ void main() {
       tester,
     ) async {
       await launch(tester);
-      await openTab(tester, 'Shop');
+      await openTab(tester, 'Toko');
       await reveal(tester, find.text('Oli Mesin Honda AHM SPX2'));
       expect(find.byType(Image).evaluate(), isNotEmpty);
       await reveal(tester, find.text('Kampas Rem Mobil Avanza'));
@@ -271,7 +271,7 @@ void main() {
       tester,
     ) async {
       await launch(tester);
-      await openTab(tester, 'Shop');
+      await openTab(tester, 'Toko');
       await tester.enterText(find.byType(TextField).first, 'zzzz');
       await tester.pumpAndSettle();
       expect(find.text('Produk tidak ditemukan'), findsOneWidget);
@@ -281,7 +281,7 @@ void main() {
       tester,
     ) async {
       await launch(tester);
-      await openTab(tester, 'Shop');
+      await openTab(tester, 'Toko');
       await reveal(tester, find.text('Kampas Rem Mobil Avanza'));
       await tester.tap(find.text('Kampas Rem Mobil Avanza').last);
       await tester.pumpAndSettle();
@@ -297,7 +297,7 @@ void main() {
     });
 
     Future<void> buyOil(WidgetTester tester) async {
-      await openTab(tester, 'Shop');
+      await openTab(tester, 'Toko');
       await reveal(tester, find.text('Oli Mesin Honda AHM SPX2'));
       await tester.tap(find.text('Oli Mesin Honda AHM SPX2').last);
       await tester.pumpAndSettle();
@@ -445,7 +445,7 @@ void main() {
       await launch(tester, repository: repo);
       expect(find.text('Toyota Avanza 2019'), findsOneWidget);
       expect(find.text('Ganti kendaraan (2)'), findsOneWidget);
-      await openTab(tester, 'Shop');
+      await openTab(tester, 'Toko');
       await reveal(tester, find.text('Kampas Rem Mobil Avanza'));
       expect(
         find.text(

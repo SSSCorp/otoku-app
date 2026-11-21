@@ -178,8 +178,8 @@ class _PetaScreenState extends State<PetaScreen> {
               children: [
                 Text(
                   origin == null
-                      ? 'Bekasi Utara · data tempat demo'
-                      : 'Posisimu aktif · data tempat demo di Bekasi Utara',
+                      ? 'BINUS Bekasi · data tempat OpenStreetMap'
+                      : 'Posisimu aktif · tempat di sekitar BINUS Bekasi',
                   style: const TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 8),
@@ -440,8 +440,8 @@ class _PetaScreenState extends State<PetaScreen> {
         _Notice(
           key: const ValueKey('far-from-demo'),
           icon: Icons.explore_outlined,
-          message: 'Tempat demo berada di Bekasi Utara, jauh dari posisimu. Jarak tetap dihitung dari posisimu saat ini.',
-          actionLabel: 'Lihat area demo',
+          message: 'Tempat contoh berada di sekitar BINUS Bekasi, jauh dari posisimu. Jarak tetap dihitung dari posisimu saat ini.',
+          actionLabel: 'Lihat area contoh',
           onAction: () =>
               _map.fitPoints([for (final p in widget.state.places) p.position]),
         ),

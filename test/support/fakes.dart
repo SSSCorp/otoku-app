@@ -7,8 +7,8 @@ import 'package:otoku/services/location_service.dart';
 import 'package:otoku/services/network_and_launcher.dart';
 import 'package:otoku/services/routing_service.dart';
 
-/// Bekasi Utara, close to the demo places.
-const bekasi = LatLng(-6.2060, 106.9950);
+/// A few hundred metres from Bengkel Jaya Motor (near BINUS Bekasi).
+const bekasi = LatLng(-6.2190, 107.0000);
 
 class FakeLocationService implements LocationService {
   FakeLocationService({

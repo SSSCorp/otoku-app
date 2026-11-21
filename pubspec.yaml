@@ -93,6 +93,14 @@ flutter:
           weight: 700
         - asset: assets/fonts/PlusJakartaSans-800.ttf
           weight: 800
+    - family: Space Grotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-500.ttf
+          weight: 500
+        - asset: assets/fonts/SpaceGrotesk-600.ttf
+          weight: 600
+        - asset: assets/fonts/SpaceGrotesk-700.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

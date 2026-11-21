@@ -66,13 +66,95 @@ class _OtoKuAppState extends State<OtoKuApp> {
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: AppColors.bg,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.red,
+        colorScheme: const ColorScheme(
+          brightness: Brightness.light,
           primary: AppColors.red,
+          onPrimary: Colors.white,
+          primaryContainer: AppColors.redTint,
+          onPrimaryContainer: Color(0xFF6B0D11),
+          secondary: Color(0xFF52525B),
+          onSecondary: Colors.white,
+          secondaryContainer: Color(0xFFF4F4F5),
+          onSecondaryContainer: AppColors.ink,
+          tertiary: Color(0xFF3F3F46),
+          onTertiary: Colors.white,
+          tertiaryContainer: Color(0xFFF4F4F5),
+          onTertiaryContainer: AppColors.ink,
+          error: AppColors.redDark,
+          onError: Colors.white,
+          errorContainer: Color(0xFFFFF1F2),
+          onErrorContainer: Color(0xFF9F1239),
           surface: Colors.white,
+          onSurface: AppColors.ink,
+          onSurfaceVariant: Color(0xFF52525B),
+          surfaceContainerLowest: Colors.white,
+          surfaceContainerLow: AppColors.surfaceLow,
+          surfaceContainer: Color(0xFFEFEFF1),
+          surfaceContainerHigh: AppColors.surfaceHigh,
+          surfaceContainerHighest: Color(0xFFE9E9EB),
+          outline: Color(0xFFA1A1AA),
+          outlineVariant: AppColors.border,
+          inverseSurface: AppColors.ink,
+          onInverseSurface: Color(0xFFFAFAFA),
+          inversePrimary: Color(0xFFFFB3B6),
+          surfaceTint: AppColors.red,
+          shadow: Color(0xFF09090B),
+          scrim: Color(0xFF09090B),
         ),
         fontFamily: 'Plus Jakarta Sans',
         dividerColor: AppColors.border,
+        dialogTheme: DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          modalBackgroundColor: Colors.white,
+          modalBarrierColor: Color(0x9909090B),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: AppColors.ink,
+          contentTextStyle: const TextStyle(
+            color: Colors.white,
+            fontFamily: 'Plus Jakarta Sans',
+            fontSize: 13,
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: AppColors.surfaceLow,
+          selectedColor: AppColors.red,
+          side: BorderSide.none,
+          labelStyle: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          secondaryLabelStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          shape: const StadiumBorder(),
+        ),
+        tabBarTheme: const TabBarThemeData(
+          indicatorColor: AppColors.red,
+          labelColor: AppColors.red,
+          unselectedLabelColor: AppColors.muted,
+          dividerColor: AppColors.border,
+        ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: AppColors.red,
+          linearTrackColor: AppColors.surfaceHigh,
+          circularTrackColor: AppColors.surfaceHigh,
+        ),
         textTheme: const TextTheme(
           headlineMedium: TextStyle(
             fontSize: 24,
@@ -525,12 +607,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: 'Home',
+            label: 'Beranda',
           ),
           NavigationDestination(
             icon: Icon(Icons.grid_view_outlined),
             selectedIcon: Icon(Icons.grid_view),
-            label: 'Shop',
+            label: 'Toko',
           ),
           NavigationDestination(
             icon: Icon(Icons.map_outlined),
@@ -1135,9 +1217,11 @@ class _LockedObdCardState extends State<LockedObdCard> {
               eyebrow: 'LENGKAPI PERAWATAN',
               title: 'Perawatan kendaraan lebih mudah',
               body: 'Temukan suku cadang dan layanan yang sesuai untuk kendaraanmu.',
-              action: 'Buka Shop',
+              action: 'Buka Toko',
               icon: Icons.shopping_bag_outlined,
-              onTap: () => push(context, CatalogScreen(state: widget.state)),
+              onTap: () =>
+                  ServicesScope.of(context)
+                      .goToTab(context, AppServices.tabShop),
             ),
           ],
         ),
@@ -1479,7 +1563,7 @@ class _CatalogState extends State<CatalogScreen> {
               child: Row(
                 children: [
                   const Text(
-                    'Shop',
+                    'Toko',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
@@ -1521,6 +1605,7 @@ class _CatalogState extends State<CatalogScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                _ObdScannerPromo(state: widget.state),
                 const SizedBox(height: 18),
                 const Text(
                   'Kategori',
@@ -1658,6 +1743,92 @@ class _CatalogState extends State<CatalogScreen> {
       ),
     );
   }
+}
+
+/// Shop banner for the OtoKu OBD-II scanner. The device is a catalogue entry
+/// only: tapping it opens the simulated OBD flow, nothing is purchased.
+class _ObdScannerPromo extends StatelessWidget {
+  final OtoKuState state;
+  const _ObdScannerPromo({required this.state});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('obd-promo'),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(16),
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppColors.navy, AppColors.darkSurface],
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Pantau Mesin dengan OtoKu OBD-II',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  height: 1.25,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.memory, color: Colors.white, size: 26),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Lihat RPM, suhu mesin, dan kode masalah dari smartphone. Pembelian belum tersedia; coba alurnya lewat simulasi.',
+          style: TextStyle(color: Color(0xFFD4D4D8), fontSize: 11, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Rp 179.000',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            FilledButton(
+              key: const ValueKey('obd-promo-open'),
+              onPressed: () => openObd(context, state),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.red,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
+              ),
+              child: const Text(
+                'Coba simulasi',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 }
 
 class ProductCard extends StatelessWidget {

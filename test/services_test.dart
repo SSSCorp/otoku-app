@@ -84,7 +84,7 @@ void main() {
       final route = await service.route(bekasi, const LatLng(-6.2051, 106.991));
       expect(
         requested!.path,
-        contains('/route/v1/driving/106.995,-6.206;106.991,-6.2051'),
+        contains('/route/v1/driving/107.0,-6.219;106.991,-6.2051'),
       );
       expect(requested!.queryParameters['overview'], 'full');
       expect(route.points, isNotEmpty);

@@ -62,7 +62,7 @@ void main() {
         ).every((r) => r.place.category == PlaceCategory.spbu),
         isTrue,
       );
-      expect(queryPlaces(places, filter: PlaceFilter.minimarket), hasLength(2));
+      expect(queryPlaces(places, filter: PlaceFilter.minimarket), hasLength(4));
       expect(
         queryPlaces(
           places,
@@ -83,7 +83,7 @@ void main() {
 
     test('searches by name, case-insensitively', () {
       expect(
-        queryPlaces(places, search: 'jaya').single.place.id,
+        queryPlaces(places, search: 'bengkel JAYA').single.place.id,
         'bengkel-jaya-motor',
       );
       expect(
@@ -100,7 +100,7 @@ void main() {
       final r = queryPlaces(
         places,
         origin: bekasi,
-        search: 'demo',
+        search: 'spbu',
         filter: PlaceFilter.spbu,
         sort: PlaceSort.name,
       );
