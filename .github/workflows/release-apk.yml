@@ -1,0 +1,224 @@
+name: Build and Release APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publish a GitHub Release with the built APKs'
+        required: false
+        default: true
+        type: boolean
+      release_tag:
+        description: 'Custom release tag (e.g. v1.0.0). Leave empty to auto-generate from pubspec.yaml'
+        required: false
+        default: ''
+        type: string
+      prerelease:
+        description: 'Mark the GitHub Release as a pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-release:
+    name: Build & Release Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run static analysis
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Resolve version and release metadata
+        id: meta
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          RAW_VERSION="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
+          VERSION_NAME="${RAW_VERSION%%+*}"
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          PRERELEASE="false"
+
+          if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+            TAG_NAME="${INPUT_RELEASE_TAG}"
+            CLEAN_TAG="${TAG_NAME#v}"
+            if [[ "${CLEAN_TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+              VERSION_NAME="${CLEAN_TAG%%[-+]*}"
+            fi
+            RELEASE_NAME="OtoKu ${TAG_NAME}"
+            PRERELEASE="${INPUT_PRERELEASE:-false}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+            CLEAN_TAG="${TAG_NAME#v}"
+            if [[ "${CLEAN_TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+              VERSION_NAME="${CLEAN_TAG%%[-+]*}"
+            fi
+            RELEASE_NAME="OtoKu ${TAG_NAME}"
+            if [[ "${TAG_NAME}" == *-* ]]; then
+              PRERELEASE="true"
+            fi
+          else
+            TAG_NAME="v${VERSION_NAME}-build.${BUILD_NUMBER}"
+            RELEASE_NAME="OtoKu v${VERSION_NAME} (Build #${BUILD_NUMBER})"
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${INPUT_PRERELEASE}" == "true" ]]; then
+              PRERELEASE="true"
+            fi
+          fi
+
+          echo "version_name=${VERSION_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "tag_name=${TAG_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "release_name=${RELEASE_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${PRERELEASE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build release APKs
+        env:
+          VERSION_NAME: ${{ steps.meta.outputs.version_name }}
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          DART_DEFINES=()
+          if [[ -n "${GOOGLE_MAPS_API_KEY}" ]]; then
+            DART_DEFINES+=(
+              "--dart-define=MAP_PROVIDER=google"
+              "--dart-define=GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}"
+            )
+          fi
+
+          # 1. Build universal release APK
+          flutter build apk --release \
+            --build-name="${VERSION_NAME}" \
+            --build-number="${BUILD_NUMBER}" \
+            ${DART_DEFINES[@]+"${DART_DEFINES[@]}"}
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "dist/otoku-${VERSION_NAME}-universal.apk"
+
+          # 2. Build split-per-ABI release APKs for smaller architecture-specific downloads
+          flutter build apk --release --split-per-abi \
+            --build-name="${VERSION_NAME}" \
+            --build-number="${BUILD_NUMBER}" \
+            ${DART_DEFINES[@]+"${DART_DEFINES[@]}"}
+
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            ABI_APK="build/app/outputs/flutter-apk/app-${abi}-release.apk"
+            if [[ -f "${ABI_APK}" ]]; then
+              cp "${ABI_APK}" "dist/otoku-${VERSION_NAME}-${abi}.apk"
+            fi
+          done
+
+      - name: Sign APKs with custom release keystore (optional)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
+            echo "ANDROID_KEYSTORE_BASE64 secret not set; using default Gradle signing config."
+            exit 0
+          fi
+
+          KEYSTORE_PATH="${RUNNER_TEMP}/release-keystore.jks"
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
+
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "${APKSIGNER}" ]]; then
+            echo "apksigner not found in ANDROID_HOME/build-tools" >&2
+            exit 1
+          fi
+
+          for apk in dist/*.apk; do
+            "${APKSIGNER}" sign \
+              --ks "${KEYSTORE_PATH}" \
+              --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+              --ks-key-alias "${ANDROID_KEY_ALIAS}" \
+              --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
+              "${apk}"
+            "${APKSIGNER}" verify "${apk}"
+          done
+
+          rm -f "${KEYSTORE_PATH}"
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd dist
+          sha256sum *.apk > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload APK workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: otoku-apk-${{ steps.meta.outputs.tag_name }}
+          path: |
+            dist/*.apk
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: >-
+          github.event_name != 'pull_request' &&
+          (github.event_name != 'workflow_dispatch' || inputs.create_release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.release_name }}
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            ### Downloads
+            - **`otoku-${{ steps.meta.outputs.version_name }}-arm64-v8a.apk`** — Recommended for modern 64-bit Android phones
+            - **`otoku-${{ steps.meta.outputs.version_name }}-armeabi-v7a.apk`** — For older 32-bit ARM Android devices
+            - **`otoku-${{ steps.meta.outputs.version_name }}-x86_64.apk`** — For Android emulators / x86_64 devices
+            - **`otoku-${{ steps.meta.outputs.version_name }}-universal.apk`** — Universal APK containing all architectures
+            - **`SHA256SUMS.txt`** — SHA-256 checksums for all APK files
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS.txt
