@@ -78,21 +78,28 @@ class CardBox extends StatelessWidget {
     this.onTap,
   });
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: AppColors.border),
-      boxShadow: cardShadow,
-    ),
-    child: Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(padding: padding, child: child),
+  Widget build(BuildContext context) => LayoutBuilder(
+    // Fill the available width (also inside start-aligned columns) but keep
+    // shrink-wrapping where the width is unbounded, e.g. in a plain Row.
+    builder: (context, constraints) => SizedBox(
+      width: constraints.hasBoundedWidth ? double.infinity : null,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+          boxShadow: cardShadow,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(padding: padding, child: child),
+          ),
+        ),
       ),
     ),
   );

@@ -71,7 +71,11 @@ class AccountScreen extends StatelessWidget {
         children: [
           const Text(
             'Akun Saya',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -.8,
+            ),
           ),
           const SizedBox(height: 12),
           CardBox(
@@ -290,7 +294,7 @@ class MapSettingsScreen extends StatelessWidget {
                       ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Atur lewat --dart-define=MAP_PROVIDER=osm|google dan GOOGLE_MAPS_API_KEY saat menjalankan aplikasi.',
+                      'Peta memakai OpenStreetMap secara bawaan. Penyedia lain hanya bisa dipilih saat aplikasi dibangun.',
                       style: TextStyle(color: AppColors.muted, fontSize: 12),
                     ),
                   ],
@@ -434,7 +438,7 @@ class AboutScreen extends StatelessWidget {
           SectionTitle('Atribusi'),
           CardBox(
             child: Text(
-              'Peta © OpenStreetMap contributors (ODbL). Rute: OSRM (router.project-osrm.org). Foto produk adalah ilustrasi dari Wikimedia Commons; kredit ada di assets/product_images/ATTRIBUTION.md. Lokasi tempat berasal dari OpenStreetMap; jam dan layanan adalah contoh yang belum diverifikasi.',
+              'Peta © OpenStreetMap contributors (ODbL). Rute: OSRM (router.project-osrm.org). Foto produk adalah ilustrasi dari Wikimedia Commons; kredit tiap foto dicatat di berkas atribusi proyek. Lokasi tempat berasal dari OpenStreetMap; jam dan layanan adalah contoh yang belum diverifikasi.',
               style: TextStyle(height: 1.45),
             ),
           ),

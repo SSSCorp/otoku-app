@@ -84,15 +84,16 @@ void main() {
       expect(find.textContaining('1.550 km lagi'), findsOneWidget);
     });
 
-    testWidgets('Home carousel stays on its slide until the user changes it', (
+    testWidgets('Home OBD promo shows the price and jumps to the shop', (
       tester,
     ) async {
       await launch(tester);
-      await reveal(tester, find.text('Coba simulasi OBD'));
-      expect(find.text('Geser untuk melihat'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.text('Coba simulasi OBD'), findsOneWidget);
+      await reveal(tester, find.byKey(const ValueKey('home-obd-promo')));
+      expect(find.text('Rp 179.000'), findsOneWidget);
+      expect(find.text('Coba simulasinya dulu'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('home-obd-shop')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('shop-cart')), findsOneWidget);
     });
 
     testWidgets(
@@ -109,8 +110,8 @@ void main() {
       tester,
     ) async {
       await launch(tester);
-      await reveal(tester, find.text('+ Catat'));
-      await tester.tap(find.text('+ Catat'));
+      await reveal(tester, find.byKey(const ValueKey('quick-kilometer')));
+      await tester.tap(find.byKey(const ValueKey('quick-kilometer')));
       await tester.pumpAndSettle();
       expect(find.text('Catat Aktivitas'), findsOneWidget);
       await tester.enterText(find.byKey(const ValueKey('log-value')), '13000');
@@ -125,8 +126,8 @@ void main() {
       'Lower manual mileage is rejected without changing the reading',
       (tester) async {
         await launch(tester);
-        await reveal(tester, find.text('+ Catat'));
-        await tester.tap(find.text('+ Catat'));
+        await reveal(tester, find.byKey(const ValueKey('quick-kilometer')));
+        await tester.tap(find.byKey(const ValueKey('quick-kilometer')));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey('log-value')),
@@ -145,8 +146,8 @@ void main() {
     );
 
     Future<void> addFuelLog(WidgetTester tester) async {
-      await reveal(tester, find.text('+ Catat'));
-      await tester.tap(find.text('+ Catat'));
+      await reveal(tester, find.byKey(const ValueKey('quick-kilometer')));
+      await tester.tap(find.byKey(const ValueKey('quick-kilometer')));
       await tester.pumpAndSettle();
       await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
@@ -163,25 +164,22 @@ void main() {
     ) async {
       await launch(tester);
       await addFuelLog(tester);
-      expect(find.text('Isi Pertalite · Catatan terbaru'), findsOneWidget);
+      expect(find.text('Isi Pertalite'), findsOneWidget);
     });
 
     testWidgets(
       'History shows empty state, then a log that can be edited and deleted',
       (tester) async {
         await launch(tester);
-        await reveal(tester, find.text('Catatan kendaraan'));
-        await tester.tap(
-          find.text(
-            'Belum ada catatan. Tambahkan kilometer, BBM, servis, atau biaya.',
-          ),
-        );
+        await reveal(tester, find.text('Riwayat Lengkap'));
+        expect(find.textContaining('Belum ada aktivitas'), findsOneWidget);
+        await tester.tap(find.text('Riwayat Lengkap'));
         await tester.pumpAndSettle();
         expect(find.text('Belum ada riwayat'), findsOneWidget);
         await back(tester);
 
         await addFuelLog(tester);
-        await tester.tap(find.text('Isi Pertalite · Catatan terbaru'));
+        await tester.tap(find.text('Isi Pertalite'));
         await tester.pumpAndSettle();
         expect(find.text('Isi Pertalite'), findsOneWidget);
 
@@ -207,7 +205,7 @@ void main() {
       await addFuelLog(tester);
       await tester.pumpWidget(const SizedBox());
       await launch(tester, repository: repo);
-      expect(find.text('Isi Pertalite · Catatan terbaru'), findsOneWidget);
+      expect(find.text('Isi Pertalite'), findsOneWidget);
     });
   });
 
@@ -217,7 +215,7 @@ void main() {
       (tester) async {
         final repo = MemoryOtoKuRepository(onboardingComplete: true);
         await launch(tester, repository: repo);
-        await tester.tap(find.text('Lihat Semua').first);
+        await tester.tap(find.text('PERAWATAN BERIKUTNYA'));
         await tester.pumpAndSettle();
         expect(find.text('Tidak ada perawatan mendesak'), findsOneWidget);
         await tester.tap(find.text('Semua'));
@@ -226,8 +224,8 @@ void main() {
         expect(find.textContaining('Jatuh tempo 14.000 km'), findsOneWidget);
 
         await back(tester);
-        await reveal(tester, find.text('+ Catat'));
-        await tester.tap(find.text('+ Catat'));
+        await reveal(tester, find.byKey(const ValueKey('quick-kilometer')));
+        await tester.tap(find.byKey(const ValueKey('quick-kilometer')));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey('log-value')),
@@ -239,7 +237,7 @@ void main() {
         await tester.drag(find.byType(Scrollable).first, const Offset(0, 1500));
         await tester.pumpAndSettle();
         expect(find.textContaining('Terlewat 100 km'), findsWidgets);
-        await tester.tap(find.text('Lihat Semua').first);
+        await tester.tap(find.text('PERAWATAN BERIKUTNYA'));
         await tester.pumpAndSettle();
         expect(find.text('Terlewat'), findsOneWidget);
         expect(find.byKey(const ValueKey('nearest-bengkel')), findsOneWidget);
@@ -264,7 +262,7 @@ void main() {
       await reveal(tester, find.text('Oli Mesin Honda AHM SPX2'));
       expect(find.byType(Image).evaluate(), isNotEmpty);
       await reveal(tester, find.text('Kampas Rem Mobil Avanza'));
-      expect(find.text('Tidak cocok untuk Honda Beat 2021'), findsOneWidget);
+      expect(find.text('Tidak cocok'), findsOneWidget);
     });
 
     testWidgets('Shop search with no match shows an empty state', (
@@ -447,12 +445,7 @@ void main() {
       expect(find.text('Ganti kendaraan (2)'), findsOneWidget);
       await openTab(tester, 'Toko');
       await reveal(tester, find.text('Kampas Rem Mobil Avanza'));
-      expect(
-        find.text(
-          'Mungkin cocok untuk Toyota Avanza 2019 · belum diverifikasi',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Mungkin cocok'), findsWidgets);
     });
   });
 
@@ -461,8 +454,8 @@ void main() {
       'Adapter flow is always labelled simulated and shows explained DTCs',
       (tester) async {
         await launch(tester);
-        await reveal(tester, find.text('Lihat demo OBD'));
-        await tester.tap(find.text('Lihat demo OBD'));
+        await reveal(tester, find.text('Coba simulasinya dulu'));
+        await tester.tap(find.text('Coba simulasinya dulu'));
         await tester.pumpAndSettle();
         expect(find.textContaining('SIMULASI'), findsOneWidget);
         await tester.tap(find.text('Cari adaptor (simulasi)'));
@@ -476,16 +469,9 @@ void main() {
           find.text('Data simulasi — bukan data kendaraan langsung'),
           findsOneWidget,
         );
+        await tester.tap(find.text('OBD Demo Aktif'));
+        await tester.pumpAndSettle();
         await reveal(tester, find.text('64'));
-
-        final seeAll = find.descendant(
-          of: find.byKey(const ValueKey('section-obd')),
-          matching: find.text('Lihat Semua'),
-        );
-        await tester.ensureVisible(seeAll);
-        await tester.pumpAndSettle();
-        await tester.tap(seeAll);
-        await tester.pumpAndSettle();
         expect(find.text('Data OBD · Simulasi'), findsOneWidget);
         await reveal(tester, find.byKey(const ValueKey('dtc-P0301')));
         expect(find.textContaining('bukan diagnosis pasti'), findsWidgets);

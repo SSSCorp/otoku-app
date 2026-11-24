@@ -47,9 +47,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
               const Text(
                 'Pesanan Saya',
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 28,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -.5,
+                  letterSpacing: -.8,
                 ),
               ),
               const SizedBox(height: 4),
@@ -138,6 +138,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       ),
                     ),
                   ),
+              if (orders.isNotEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+                  child: Text(
+                    'Status pesanan adalah simulasi lokal. Tidak ada pembayaran atau pengiriman nyata.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12),
+                  ),
+                ),
             ],
           ),
         ),
@@ -322,7 +330,8 @@ class OrderDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     if (order.isBooking) ...[
-                      Text('Layanan: ${order.services.join(', ')}'),
+                      if (order.services.isNotEmpty)
+                        Text('Layanan: ${order.services.join(', ')}'),
                       if (order.scheduledDate != null)
                         Text(
                           'Jadwal: ${Pesanan.dateLabel(order.scheduledDate!)} ${order.timeSlot ?? ''}',
@@ -344,7 +353,7 @@ class OrderDetailScreen extends StatelessWidget {
               CardBox(
                 child: Text(
                   order.isBooking
-                      ? 'Estimasi biaya layanan ${formatRupiah(order.total)} (demo). Dibayar langsung di bengkel; tidak ada pembayaran di aplikasi.'
+                      ? '${order.total > 0 ? 'Estimasi biaya layanan ${formatRupiah(order.total)} (demo). ' : 'Estimasi biaya belum tersedia. '}Dibayar langsung di bengkel; tidak ada pembayaran di aplikasi.'
                       : 'Total ${formatRupiah(order.total)}. Belum ada pembayaran; integrasi pembayaran tidak tersedia pada prototipe ini.',
                   style: const TextStyle(height: 1.5),
                 ),

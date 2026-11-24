@@ -144,6 +144,9 @@ class _TripScreenState extends State<TripScreen> {
                       ],
                     ),
                   ),
+                if (services.location.problemMessage != null &&
+                    !tracker.recording)
+                  const SizedBox(height: 12),
                 CardBox(
                   child: Column(
                     children: [

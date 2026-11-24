@@ -156,7 +156,11 @@ class _PetaScreenState extends State<PetaScreen> {
                 const Expanded(
                   child: Text(
                     'Peta & Tempat',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.8,
+                    ),
                   ),
                 ),
                 TextButton.icon(

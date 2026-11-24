@@ -83,19 +83,58 @@ class _PlaceDetailScreenState extends State<PlaceDetailScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CardBox(
-                  color: AppColors.ink,
-                  child: SizedBox(
-                    height: 120,
-                    child: Center(
-                      child: Icon(
-                        categoryIcon(place.category),
-                        color: color == AppColors.red
-                            ? AppColors.red
-                            : Colors.white,
-                        size: 64,
-                      ),
+                Container(
+                  height: 148,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.navy, AppColors.darkSurface],
                     ),
+                  ),
+                  child: Stack(
+                    children: [
+                      for (final (size, alpha, right, top) in const [
+                        (220.0, .10, -50.0, -60.0),
+                        (140.0, .08, 10.0, -10.0),
+                      ])
+                        Positioned(
+                          right: right,
+                          top: top,
+                          child: Container(
+                            width: size,
+                            height: size,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: alpha),
+                              ),
+                            ),
+                          ),
+                        ),
+                      Center(
+                        child: Container(
+                          width: 84,
+                          height: 84,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(26),
+                            color: Colors.white.withValues(alpha: .08),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: .14),
+                            ),
+                          ),
+                          child: Icon(
+                            categoryIcon(place.category),
+                            color: color == AppColors.red
+                                ? const Color(0xFFFF8A8F)
+                                : Colors.white,
+                            size: 42,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
