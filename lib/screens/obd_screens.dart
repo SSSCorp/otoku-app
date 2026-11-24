@@ -165,12 +165,13 @@ class _ObdConnectSheetState extends State<ObdConnectSheet> {
                       subtitle: Text(
                         'Sinyal ${'●' * adapter.signal}${'○' * (3 - adapter.signal)}',
                       ),
-                      trailing: const Text(
-                        'Hubungkan',
-                        style: TextStyle(
-                          color: AppColors.red,
-                          fontWeight: FontWeight.w800,
+                      trailing: FilledButton(
+                        onPressed: () => _connect(adapter),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                         ),
+                        child: const Text('Hubungkan'),
                       ),
                       onTap: () => _connect(adapter),
                     ),

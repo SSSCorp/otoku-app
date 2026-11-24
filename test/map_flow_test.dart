@@ -426,8 +426,8 @@ void main() {
       (tester) async {
         final repo = MemoryOtoKuRepository(onboardingComplete: true);
         await launch(tester, repository: repo);
-        await reveal(tester, find.text('+ Catat'));
-        await tester.tap(find.text('+ Catat'));
+        await reveal(tester, find.byKey(const ValueKey('quick-kilometer')));
+        await tester.tap(find.byKey(const ValueKey('quick-kilometer')));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey('log-value')),
@@ -436,6 +436,8 @@ void main() {
         await tester.tap(find.text('Simpan Catatan'));
         await tester.pumpAndSettle();
         await tester.drag(find.byType(Scrollable).first, const Offset(0, 1500));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('PERAWATAN BERIKUTNYA'));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('nearest-bengkel')), findsOneWidget);
 
